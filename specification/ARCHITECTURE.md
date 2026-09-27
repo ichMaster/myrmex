@@ -1,10 +1,48 @@
 # Architecture — Myrmex
 
-Document version 1.2 — 27 September 2026.
+Document version 1.4 — 27 September 2026.
 
 ## Overview
 
-Two layers bound by one rule: the **simulation is pure data** — arrays and dictionaries with no dependency on Godot's scene tree — and everything else (rendering, UI, later the network) only reads it or feeds commands into it at tick boundaries. Capabilities grow by version (three roles → six, one predator → three, GDScript strategies → sandboxed Lua, single app → server and clients), but the sim/presentation split, the determinism rules, and the contracts below are fixed from the first line of code. That is what makes headless tests, the strategy arena, saves-as-serialization, and the v4 server split cheap instead of rewrites.
+Two layers bound by one rule: the **simulation is pure data** — arrays and dictionaries with no dependency on Godot's scene tree — and everything else (rendering, UI, later the network) only reads it or feeds commands into it at tick boundaries. Capabilities grow by version (three roles → six, one predator → three, a tiny `StateView` → the full one, single app → server and clients), but the sim/presentation split, the determinism rules, and the contracts below are fixed from the first line of code. That is what makes headless tests, the strategy arena, saves-as-serialization, and the v4 server split cheap instead of rewrites.
+
+```mermaid
+flowchart LR
+    subgraph app["res://app/ — one process, v0–v3"]
+        direction TB
+        subgraph sim["res://sim/ — pure data: no Node, no scene tree, no network"]
+            direction TB
+            core["world · worldgen · chunks · clock · rng streams"]
+            live["agents · nest · tasks · combat · spawner · pathfinding"]
+            brain["queen_ai — task board<br/>strategy — StrategyRunner + StateView"]
+            core --- live --- brain
+        end
+        view["res://view/ · res://ui/<br/>tile window · MultiMesh agents · minimap<br/>inspector · params · tools · queen panel"]
+        llm["res://llm/<br/>gemini · openai_compat · anthropic · ollama · mock"]
+    end
+    data["res://data/*.tres<br/>parameter defaults"] --> sim
+    sim -->|"read state — never mutate"| view
+    view -->|"observer commands, applied at tick boundaries"| sim
+    sim -->|"state report + metrics"| llm
+    llm -->|"new strategy program → validated → applied at a tick boundary"| sim
+    sim -->|"var_to_bytes, background thread"| saves[("user:// saves<br/>+ strategy library")]
+```
+
+From v4 the same `res://sim/` runs headless on a server and the observer becomes a thin client; nothing in the simulation changes:
+
+```mermaid
+flowchart LR
+    subgraph host["home Linux machine"]
+        server["res://server/<br/>headless tick loop · res://sim/ · LLM · autosave<br/>command journal"]
+        proxy["Caddy or nginx<br/>TLS wss · COOP/COEP · static web client"]
+        server --- proxy
+    end
+    web["res://client/ — web export<br/>Mac · iPad · phone"]
+    mac["res://client/ — native macOS"]
+    proxy -->|"snapshot once, then deltas:<br/>camera area · global changes · minimap · stats"| web
+    proxy --> mac
+    web -->|"camera rect · commands · chunk requests<br/>(one shared token)"| proxy
+```
 
 ## Components
 
@@ -57,6 +95,17 @@ Discrete ticks at 10/s base speed (0.5x–16x multipliers, pause, single-step). 
 6. Knowledge update (reveal around myrmeks).
 7. Render sync (only when this frame renders).
 
+```mermaid
+flowchart LR
+    e["1 · environment<br/>clock · spawn · regen"] --> p["2 · queen planning<br/>every N_plan ticks"]
+    p --> m["3 · myrmeks<br/>one step each, id order"]
+    m --> d["4 · predators<br/>one step each, id order"]
+    d --> c["5 · combat<br/>deaths · carcasses · cargo drops"]
+    c --> k["6 · knowledge<br/>reveal around myrmeks"]
+    k --> r["7 · render sync<br/>only when this frame renders"]
+    r -.->|"tick + 1"| e
+```
+
 ## Agents
 
 One record shape for everyone: `id`, `kind`, `type`, `nest_id`, `cell`, `hp`/`hp_max`, `energy`/`energy_max`, `move_cooldown`/`move_timer`, `vision`, `attack`, `carry` (type, units, capacity), `state`, `task_id`, `target_cell`, `path`. No age. **Movement is 8-directional with uniform cost; all radii and adjacency use Chebyshev distance** — which is why wall rings are squares.
@@ -74,9 +123,61 @@ One record shape for everyone: `id`, `kind`, `type`, `nest_id`, `cell`, `hp`/`hp
 
 **State machine (all roles):** `IDLE → GO_TO → WORK → RETURN → DEPOSIT → IDLE`, with interrupts `HUNGRY` (energy < 40: asks for food, keeps working), critical (< 15: drops the task, heads home or waits for a carrier), `FLEE` (workers near a predator), `FIGHT` (guards only), `DEAD`. Adjacent nest-mates can hand cargo over.
 
+```mermaid
+stateDiagram-v2
+    [*] --> IDLE
+    IDLE --> GO_TO: task assigned
+    GO_TO --> WORK: target reached
+    GO_TO --> IDLE: target gone / unreachable
+    WORK --> RETURN: cargo full / work done
+    WORK --> IDLE: target exhausted
+    RETURN --> DEPOSIT: at storage or neighbour
+    DEPOSIT --> IDLE
+    IDLE --> HUNGRY: energy < 40
+    GO_TO --> HUNGRY: energy < 40
+    WORK --> HUNGRY: energy < 40
+    HUNGRY --> IDLE: fed (+50 energy)
+    HUNGRY --> [*]: energy 0 — starved
+    note right of HUNGRY
+        < 40 · asks for food, keeps working
+        < 15 · drops the task, heads home
+        or waits for a carrier
+    end note
+    GO_TO --> FLEE: predator adjacent (workers)
+    WORK --> FLEE: predator adjacent (workers)
+    FLEE --> IDLE: clear
+    FLEE --> [*]: caught — eaten
+    IDLE --> FIGHT: enemy in range (guards only)
+    FIGHT --> IDLE: enemy dead or gone
+    FIGHT --> [*]: killed
+```
+
 **Energy:** max 100; idle 0.01/tick; step 0.05 (+50% loaded; 0.03 on paving); attack 0.5; one food unit = +50; queen 0.1/tick, sated at ≥70; energy 0 = death. Energy and every other accumulated quantity are stored as **fixed-point integers** (thousandths of a unit: idle 10, step 50/75/30, attack 500, one food unit 50 000, max 100 000) — see §Determinism and replay. **On any death carried units drop on the cell as `FOOD`/`PILE` (lost if the cell already holds an object); an eaten or starved body disappears.**
 
-**Predators** (energy-driven: hungry hunts, sated wanders, starving dies; states `WANDER → HUNT → ATTACK → EAT → REST`, plus `FLEE` for fleeing species):
+**Predators** (energy-driven: hungry hunts, sated wanders, starving dies):
+
+```mermaid
+stateDiagram-v2
+    [*] --> WANDER
+    WANDER --> HUNT: myrmek in vision
+    HUNT --> ATTACK: adjacent cell
+    HUNT --> WANDER: prey lost
+    ATTACK --> EAT: prey dead
+    EAT --> REST: eat_time elapsed
+    REST --> WANDER: rested
+    REST --> HUNT: hungry again
+    note right of EAT
+        immobile for eat_time
+        (halved at night) —
+        an easy target for guards
+    end note
+    ATTACK --> FLEE: hp < 30% (lizard)
+    HUNT --> FLEE: hp < 30% (lizard)
+    FLEE --> WANDER: safe
+    FLEE --> [*]: killed → carcass becomes FOOD
+    ATTACK --> [*]: killed → carcass becomes FOOD
+    WANDER --> [*]: energy 0 — starved
+```
 
 | Species | Behaviour | Cooldown d/n | Vision d/n | hp | Attack | Eat d/n | Carcass |
 |---|---|---|---|---|---|---|---|
@@ -89,16 +190,61 @@ One record shape for everyone: `id`, `kind`, `type`, `nest_id`, `cell`, `hp`/`hp
 ## Nest
 
 - **Knowledge:** a cell seen once by any nest myrmek is known forever; known cells show live state. The **frontier** (known passable cells bordering unknown) is maintained incrementally.
+```
+   outside                                  #  NEST_WALL — impassable to everyone
+   · · · · · · · · · · ·                    .  interior ground (this is the capacity)
+   · # # # # # # # # # ·                    Q  QUEEN_CHAMBER (free, on the queen's cell)
+   · # . . . . . . . # ·                    F  STORAGE_FOOD   R  STORAGE_RES (2 res each)
+   · # . = = = . . . # ·                    =  PAVEMENT — cooldown ÷ pave_speed
+   · # . = Q F R . . # ·                    G  guard holding the gap
+   · # . = = = . . . # ·                    ⟵  the gap: a plain ground cell, no wall.
+   · # . . . . . . . # ·                        Anything may pass — one agent per cell,
+   · # # # # G # # # # ·                        so one guard physically blocks it.
+   · · · · ·⟵· · · · · ·
+```
+
+The flood fill from `Q` spreads over the 21 `.`/`=` cells and stops at `G`, so this nest's capacity is 21 myrmeks — everyone else sleeps outside by the gap, under guard. At dusk a builder walls `G` shut (`seal_at_night`) and reopens it at dawn.
+
 - **Interior is computed, not built:** a flood fill from the queen chamber, blocked by walls, stopping at gaps. Its passable-cell count is the nest's capacity (target: population + ~10% margin, since one agent fits per cell). When capacity or storage runs short, the queen plans a wider ring; after it closes, the old ring is dismantled and its resources return.
 - **Walls and gaps:** a wall costs 1 resource and is impassable to everyone; a storage cell costs 2 and holds 20 units; a gap is an open ground cell — one guard standing in it physically blocks it. Builders may wall any ground cell and demolish any wall (seal at dusk, reopen at dawn, break out if besieged).
 - **Paving and roads:** `PAVEMENT` (1 resource) divides `move_cooldown` by `pave_speed` (default 2) and cuts step energy; the nest counts decaying per-cell traffic, and cells above `pave_traffic` enter the `PAVE` queue after walls and storages — roads grow along real routes. Predators get no benefit. Paving does not define "inside".
-- **Flows:** patch → (harvester) → pile/cargo → (carrier/harvester) → resource storage → (builder) → wall or storage cell; map food → (carrier) → food storage → queen and the hungry; carcass → map food.
+- **Flows:**
+
+```mermaid
+flowchart LR
+    patch["resource patch · shared reserve"] -->|"harvester mines<br/>1 unit / 5 ticks"| cargo["cargo or pile<br/>beside the patch"]
+    cargo -->|"harvester or carrier"| resstore[("STORAGE_RES<br/>20 units / cell")]
+    resstore -->|"builder takes 1"| built["wall · storage cell · pavement"]
+    built -.->|"demolished — resource returned"| resstore
+    mapfood["food on the map<br/>spawned in active chunks"] -->|"carrier, 2 units"| foodstore[("STORAGE_FOOD<br/>20 units / cell")]
+    foodstore --> queen["queen<br/>eats automatically"]
+    foodstore --> inside["hungry myrmeks<br/>inside the nest"]
+    foodstore -->|"carrier delivers · FEED_MYRMEK"| field["hungry myrmeks<br/>in the field"]
+    carcass["predator carcass"] --> mapfood
+    death["any death"] -.->|"carried units drop on the cell"| mapfood
+```
 
 ## The queen's brain
 
 **Tactical level — every `N_plan` ticks:** gather state (food, piles, patches, predators on the known map, hungry myrmeks, build queue, storage levels, frontier) → build the task board (`EXPLORE`, `FETCH_FOOD`, `FETCH_PILE`, `HARVEST`, `BUILD`, `FEED_MYRMEK`, `DELIVER_RES`, `PATROL`, `INTERCEPT`, `HOLD_GAP`, `OPEN_GAP`, `CLOSE_GAP`, `PAVE`, `ESCORT`, `GUARD_SITE`) → rank by policy (safety → feeding → food income → construction → resources → exploration) → assign greedily by the distance field. **Known but unreachable cells (no finite distance) are never assigned as targets.** A task whose target vanishes is cancelled. Guard distribution across patrol/gaps/escort/sites is the defence-strategy space ("fortress", "convoy", "outposts", adaptive). While no nest exists, a hardcoded first-day plan runs: harvesters to the nearest patch, builders raise a radius-5 ring (~40 walls) with one gap and a food storage, guards ring the queen, scouts open the surroundings.
 
 **Strategic level — the strategy program:** a module with `plan(s) -> policy` and a persistent `memory` table, executed by the queen on every planning cycle (microseconds). It assigns no tasks, moves no myrmeks, and sees nothing beyond the nest's knowledge.
+
+```mermaid
+flowchart TB
+    world["sim state (the nest's known map only)"] --> sv["StateView — the only window<br/>copied scalars + engine-side helpers<br/>predators_within · nearest_food_dist · cell"]
+    sv --> planf["plan s → policy<br/>sandboxed Lua 5.4 · microseconds · instruction-limited"]
+    planf <--> mem[("memory<br/>plain data · persists between calls · saved with the state")]
+    planf --> check{"schema + bounds check"}
+    check -->|"out of bounds / error / looping"| keep["discard · previous policy keeps running"]
+    check -->|ok| policy["policy<br/>ranking weights · guard distribution · night policy<br/>build plan · pave threshold · capacity margin"]
+    policy --> board["task board — tactics, every N_plan ticks<br/>gather → build tasks → rank → assign greedily by distance field"]
+    board --> agents["one task per myrmek"]
+    agents -.->|"outcomes: deaths, food, capacity"| world
+    planf -.->|"request_revision"| llm["LLM revision loop"]
+```
+
+The strategic and tactical levels run on completely different clocks: `plan()` is microseconds every `N_plan` ticks, while the model is called rarely and never blocks a tick.
 
 - **`StateView`** is the only window: simple values copied into a dictionary (day phase, population by role, deaths by cause, storages, queen energy, known food/patches/predators with distances, frontier size, capacity vs population, gap status) plus engine-side helpers (`predators_within(r)`, `nearest_food_dist()`, `patch_reserve(id)`, `cell(x, y)`). The `World` object is never passed.
 - **Policy** comes back as a table — ranking weights, guard distribution, night policy, build plan, paving threshold, capacity margin, `request_revision`, and (from v2) the desired role mix — converted to a `Dictionary` and checked against a schema and value bounds.
@@ -113,6 +259,27 @@ One record shape for everyone: `id`, `kind`, `type`, `nest_id`, `cell`, `hp`/`hp
 | `LEARNED` (v6) | A small NN tunes parameters / picks from the library; asks the LLM at low confidence | Every planning cycle |
 
 **The LLM loop:** the model receives the language description, the `StateView`/policy API, the goal, and the situation → returns a program; on revision it also gets the current program, metrics since the last revision, and a log of which branches fired → returns a new version plus a change note. Every version passes validation — compile, static check or sandbox, policy bounds, a dry run on recorded states from the last day — or is discarded while the previous version keeps running. Calls are asynchronous (`HTTPRequest`); the simulation never waits; a minimum real-time interval prevents request storms at 16x. Every accepted version is journaled with its tick, so saves and replays reproduce LLM runs without new calls. **The model never controls an individual myrmek.**
+
+```mermaid
+sequenceDiagram
+    participant Sim as tick loop
+    participant Pol as queen_policy
+    participant Prov as provider · Gemini or MOCK
+    Sim->>Pol: trigger — first night · predator inside · mass deaths ·<br/>empty storage · request_revision · N_revision elapsed
+    Pol->>Prov: async HTTPRequest — language + StateView/policy API,<br/>current program, metrics since last revision, fired branches
+    loop while the answer is in flight
+        Sim->>Sim: ticks continue on the CURRENT program
+    end
+    Prov-->>Pol: new program + change note
+    Pol->>Pol: compile · sandbox · policy bounds ·<br/>dry run on recorded states from the last day
+    alt validation passes
+        Pol->>Sim: autosave, then apply at a tick boundary
+        Pol->>Pol: journal {source, tick, change_note, metrics}
+    else validation fails
+        Pol->>Pol: discard — previous version keeps running
+    end
+    Note over Sim,Prov: a minimum real-time interval prevents request storms at 16x ·<br/>the journal replays the run later with no new calls
+```
 
 **Strategy library:** programs are files (`user://strategies/`) with names, versions, and revision history; any can be loaded as `PROGRAM` or raced headless on identical seeds — the arena.
 
@@ -174,24 +341,72 @@ Since the sim is pure data, saving is serialization: format version, seed and pa
 
 Defaults are data (`res://data/*.tres` — `roles.tres`, `predators.tres`, `sim_params.tres`), edited live from the parameters panel. Key defaults: world 2048x2048; chunk 64; water/rock 12%/10%; 40 patches (10–60 units); 60 starting food items; active radius 200; 10 ticks/s; day 600/60/400/60; `N_plan` 10; roles 15/20/15/30/20; food reserve 20; `seal_at_night` on; `T_food` 200 / `p_food` 0.3; `T_res` 3000; predators 3/2/2 on a 60–150 ring; `queen_brain` `PROGRAM`; `N_revision` 1120; LLM min interval 60 s; provider Gemini 3.1 Pro (`MOCK` in tests); `build_time` 10; `demolish_time` 5; `pave_speed` 2; `pave_traffic` 30/day; `autosave_ticks` 1120.
 
-## Stack and repository layout
+## Tech stack
 
-Godot 4.x (4.3+), GDScript; godot-luaAPI from v0.5, its version pinned together with the Godot version; gdUnit4 for headless tests; Gemini 3.1 Pro via the Google AI API behind an abstracted provider seam. Graphics are vector SVG sprites rasterized at import (128 px/cell, mipmaps), tinted via `modulate`; a tile window around the camera, `MultiMeshInstance2D` for myrmeks with interpolated motion, `AnimatedSprite2D` for the few predators, `CanvasModulate` for day/night.
+| Layer | Choice | Notes |
+|---|---|---|
+| Engine | **Godot 4.x (4.3+)** | 2D cellular world, one project exporting to macOS (v1), headless Linux + web (v4). Version pinned in `project.godot`; hot paths can move to GDExtension later if profiling demands it |
+| Language | **GDScript** | Everything but strategies. Fast to write, one language across sim/view/UI; the sim uses typed arrays and avoids per-tick allocation |
+| Strategy runtime | **Lua 5.4 via godot-luaAPI** (GDExtension, from v0.5) | The only sandbox that holds: `base`/`table`/`string`/`math` bound, no `os`/`io`/`require`/`load`/engine, instruction-counter hook. Vendored in `res://addons/luaAPI/`, its version **pinned together with the Godot version** (it ships per-engine binaries); behind `StrategyRunner` so it stays swappable |
+| Sim data | `PackedByteArray` / `PackedInt32Array` layers + sparse `Dictionary` | Layer arrays for terrain/structures/knowledge, sparse maps for objects/agents, `PackedInt32Array` distance field. Integer-only arithmetic (fixed-point energy) — §Determinism and replay |
+| Randomness | `RandomNumberGenerator`, named streams | worldgen · spawner · combat · strategy · interventions, each derived from the master seed (`rng.gd`) |
+| Pathfinding | Hand-written weighted BFS + `AStarGrid2D` | Distance field for the global case, engine A* on a bounded rectangle for the local one — §Pathfinding |
+| Persistence | `var_to_bytes` + `FileAccess.open_compressed`, JSON header | Plain types only (never `*_with_objects`), background-thread writes, temp-then-rename — §Saves |
+| Rendering | `TileMapLayer` tile window · `MultiMeshInstance2D` (myrmeks) · `AnimatedSprite2D` (predators) · `Sprite2D` (objects) · `CanvasModulate` + `PointLight2D` (day/night) | Only a ~128x96 window around the camera is filled; myrmek positions interpolate between ticks so cell-stepping logic looks continuous |
+| Art | **SVG**, rasterized at import (128 px/cell, mipmaps), tinted via `modulate` | Small hand-drawable set; sharp from 8 to 48 px per cell; role/state/phase are colour, not extra assets |
+| Config data | Godot `Resource` `.tres` files | `roles.tres`, `predators.tres`, `sim_params.tres` — defaults are data, editable live from the parameters panel |
+| LLM | **Gemini 3.1 Pro** (Google AI API) via `HTTPRequest`, behind an abstracted provider seam | Alongside: OpenAI-compatible, Anthropic, local Ollama, and `MOCK` (reads a program from a file) — the only provider used in tests. Async; keys in local config outside the repo, server-side only from v4 |
+| Tests | **gdUnit4**, headless | `scripts/test.sh` is the canonical gate: unit, contract, determinism, strategy-safety, balance smoke. No paid API calls, ever |
+| Networking (v4) | `WebSocketMultiplayerPeer`, binary `PackedByteArray` messages | Snapshot-plus-deltas protocol, compressed above 1 KB — see ROADMAP v4.1 |
+| Deployment (v4) | Headless Linux export as a systemd service or Docker image, behind Caddy or nginx | TLS (`wss://`), COOP/COEP headers for the web export, one shared token, tunnel or VPN for outside access — see ROADMAP v4.3 |
+
+Deliberately **not** in the stack: no physics engine (the world is cellular and stepped by hand), no navigation server, no ECS addon, no external build system, no runtime package manager — the two vendored addons (godot-luaAPI, gdUnit4) are the only third-party code.
+
+## Repository layout
 
 ```
-res://sim/        pure simulation, no Node: world, worldgen, clock, agent, myrmek,
-                  predator, nest, queen_ai, strategy, strategy_lua, queen_policy,
-                  nest_report, tasks, pathfinding, combat, spawner, rng, save
-res://app/        main scene: tick loop + render in one process (v0–v3)
-res://view/       world_view (tile window), agents_view (MultiMesh), minimap, daynight
-res://ui/         hud, inspector, params_panel, stats, tools, queen panel
-res://llm/        providers (gemini, openai_compat, anthropic, ollama, mock), API docs, prompts
-res://data/       roles.tres, predators.tres, sim_params.tres
-res://art/        SVG sprites
-res://tests/      gdUnit4: headless simulation tests
-res://server/     (v4) server main scene: tick loop, clients, command journal, autosave
-res://client/     (v4) client main scene: connection, local state copy, camera
-res://net/        (v4) protocol: snapshot, deltas, chunk versions, commands
+res://sim/           pure simulation — no Node, no scene tree, no network
+  world.gd           layer arrays, chunks, cell access
+  worldgen.gd        deterministic generation from a seed
+  clock.gd           ticks, speed, day phases
+  rng.gd             named seeded streams
+  agent.gd           shared agent record
+  myrmek.gd          myrmek state machine by role
+  predator.gd        predator state machine by species
+  nest.gd            knowledge, frontier, interior/capacity, storages, build plan
+  tasks.gd           task types and lifecycle
+  queen_ai.gd        tactical planning — the task board
+  strategy.gd        StrategyRunner seam + StateView assembly and helpers
+  strategy_lua.gd    the Lua 5.4 runner: sandbox, instruction limit, table conversion
+  policy_schema.gd   policy fields, types, bounds — the validation source of truth
+  queen_policy.gd    PROGRAM / LLM modes, version validation, dry run, library
+  nest_report.gd     the report for the LLM (state, metrics, fired branches)
+  pathfinding.gd     distance field + local A*
+  combat.gd          adjacency damage, deaths, carcasses, cargo drops
+  spawner.gd         food, resource regeneration, predators (active zone only)
+  save.gd            serialization, autosave rotation, slots
+res://app/           main scene: tick loop + render in one process (v0–v3)
+res://view/          world_view (tile window), agents_view (MultiMesh), minimap, daynight
+res://ui/            hud, inspector, params_panel, stats, tools, queen panel
+res://llm/           providers (gemini, openai_compat, anthropic, ollama, mock),
+                     the StateView/policy API description for the model, prompts
+res://data/          roles.tres, predators.tres, sim_params.tres
+res://art/           SVG sprites
+res://strategies/    shipped strategy programs: the PROGRAM default, arena baselines,
+                     MOCK inputs (the runtime library lives in user://strategies/)
+res://tools/         headless entry points: run_sim.gd, run_arena.gd
+res://addons/        vendored: luaAPI (godot-luaAPI), gdUnit4 — versions pinned
+res://tests/         gdUnit4: headless simulation tests, golden StateView fixtures, seeds
+res://server/        (v4) server main scene: tick loop, clients, command journal, autosave
+res://client/        (v4) client main scene: connection, local state copy, camera
+res://net/           (v4) protocol: snapshot, deltas, chunk versions, commands
+
+scripts/             test.sh (the canonical gate), run_headless.sh, arena.sh, export.sh
+deploy/              (v4) Dockerfile, compose, Caddyfile, systemd unit, deploy/backup scripts
+specification/       VISION.md, ARCHITECTURE.md, ROADMAP.md, implementation/, history/
+.claude/skills/      the SDLC skills that build this from the specs (CODEGEN.md)
+codegen/             the run tracker and its dashboard
+.github/workflows/   ci.yml — lint + the headless suite on every push/PR
 ```
 
 ## Testing
@@ -217,6 +432,10 @@ Decisions still open, each with the current recommendation. When one is settled,
 ---
 
 ## History of changes
+
+**v1.4 (27.09.2026)** — split the former "Stack and repository layout" into a dedicated **Tech stack** section (a per-layer table: engine, language, strategy runtime, sim data structures, RNG, pathfinding, persistence, rendering, art, config data, LLM, tests, networking and deployment, plus an explicit list of what is deliberately not used) and a **Repository layout** section holding the tree. The tree is now file-by-file and gained the directories the specs had implied but never listed: `res://addons/` (the two vendored addons), `res://strategies/` (shipped programs, incl. `MOCK` inputs), `res://tools/` (headless entry points), `res://sim/policy_schema.gd`, plus the non-`res://` roots `scripts/`, `deploy/`, `.github/workflows/` and the existing `specification/`, `.claude/skills/`, `codegen/`.
+
+**v1.3 (27.09.2026)** — added nine diagrams (Mermaid, plus an ASCII cell grid): the v0–v3 layer map and the v4 server/client topology (Overview), the seven tick phases (Time and the tick), the myrmek and predator state machines (Agents), the nest layout with its computed capacity and the food/resource economy (Nest), the two-level queen brain and the LLM revision sequence (The queen's brain). Also corrected a leftover in Overview that still described strategies moving from GDScript to Lua.
 
 **v1.2 (27.09.2026)** — four open questions decided and folded in: strategies are sandboxed Lua 5.4 from the first prototype, no GDScript runner (Components, The queen's brain, Security, Error handling, Stack, Testing); the test framework is gdUnit4 (Stack, layout); sim arithmetic is integer-only — fixed-point energy in thousandths, transcendental functions banned in the sim, cross-platform bit-identity stated (Agents, Determinism and replay); the RNG becomes named streams derived from the master seed (Components, Determinism and replay, Saves). Open questions renumbered — four remain.
 
