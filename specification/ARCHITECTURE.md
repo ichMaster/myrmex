@@ -1,6 +1,6 @@
 # Architecture — Myrmex
 
-Document version 1.17 — 27 September 2026.
+Document version 1.18 — 27 September 2026.
 
 ## Overview
 
@@ -69,7 +69,7 @@ Everything below describes the full v1 system. The **v0 prototype** ([ROADMAP.md
 | **LLM** | Gemini 3.1 Pro + `MOCK`; writes the program at start, revises on three plain triggers — the first night, more than three deaths since dawn, `request_revision` | OpenAI-compatible, Anthropic, Ollama providers; the scorecard-driven triggers (v1.5) |
 | **Pathfinding** | Weighted BFS distance field + local `AStarGrid2D`, recomputed **globally over the whole 256² world** | Incremental recomputation scoped to chunks (v1.1) |
 | **Saves** | Serialization of the full state; **one autosave file**, written at dawn and on exit; launch resumes from it | Rotation (3 + one per day), the saved-days list, named slots (v1.6) |
-| **Rendering** | SVG sprites, tile window, `MultiMeshInstance2D` myrmeks with interpolation, `CanvasModulate` day/night; **flat tiles, two zooms (16/32 px)** | Terrain-set autotiling, zooms 8–48, `PointLight2D` at the gap (v1.6) |
+| **Rendering** | The isometric renderer, painted ground with biomes and the full decor set (trees included), wall ridge run/corner/end, eight-heading creatures, `CanvasModulate` day/night; **two zooms (16/32 px)** | The full autotiling set, the 16–64 zoom ladder, dirt trails from traffic, `PointLight2D` at the gap (v1.4–v1.6) |
 | **UI** | Camera, pause + 1x/4x/16x + step, minimap, click inspector, statistics, event log, queen panel; **two interventions** (place food, release a spider); parameters edited in `.tres` | The live parameters panel, the full inspector, all interventions (v1.6) |
 | **Server / Net** | Not present — one process, `res://app/` | The whole of v4 |
 
@@ -99,7 +99,7 @@ Estimated size of the whole prototype: three to four thousand lines of GDScript.
 - **Spawner** (`spawner.gd`). Food, resource regeneration, predator population — active zone only.
 - **RNG** (`rng.gd`). Named seeded streams (worldgen, spawner, combat, strategy, interventions), all derived from the master seed; every random draw goes through one of them.
 - **Save** (`save.gd`). Serialization, autosave, slots. See §Saves.
-- **View** (`res://view/`). Tile-window renderer in the ¾ RTS view (Y-sort for tall sprites), MultiMesh agents with per-instance directional-frame selection, minimap, day/night modulation, and the **decor layer**: render-only ground dressing (grass tufts, pebbles, flowers, dry patches, moss by water) placed by `hash(world_seed, cell)` on ground cells (~1 per 5) — deterministic, absent from sim state, saves and the minimap, and strictly under-agent scale so nothing looks blocking that is not. Reads state, never writes it.
+- **View** (`res://view/`). The isometric renderer — the data grid stays square, presentation maps `(x, y) → ((x−y)·64, (x+y)·32)` and depth-sorts by `x + y` — the painted-ground layer (biome tints blended by seeded noise, baked to a texture or shader-blended, no visible cell seams), the render-derived **creep field** around the nest (0–1, fading ~4 cells out), MultiMesh agents with per-instance heading-frame selection, minimap, day/night modulation, and the **decor layer**: fourteen render-only pieces (tufts, pebbles, flowers, mushrooms, twigs, leaf litter, stones, cracks… and passable **trees** in seeded groves, the canopy fading to ~40% over an agent beneath) placed by `hash(world_seed, cell)` — deterministic, absent from sim state, saves and the minimap. Reads state, never writes it.
 - **UI** (`res://ui/`). HUD, inspector, parameter panel, statistics, intervention tools, queen panel.
 - **Server / Client / Net** (`res://server/`, `res://client/`, `res://net/`, v4). Headless tick loop with connected observers; snapshot-plus-deltas protocol. See ROADMAP v4.
 
@@ -109,7 +109,7 @@ Each cell is a stack of layers:
 
 | Layer | Storage | Values |
 |---|---|---|
-| Terrain | `PackedByteArray` | `GROUND` (passable), `WATER`, `WALL` (impassable to all) |
+| Terrain | `PackedByteArray` | `GROUND` (passable); `WATER`, `HIGHLAND` (mountain massifs), `WALL` (rock) — impassable to all |
 | Structure | `PackedByteArray` | `NONE`, `NEST_WALL`, `PAVEMENT`, `STORAGE_FOOD`, `STORAGE_RES`, `QUEEN_CHAMBER` |
 | Object | sparse `Dictionary[cell -> Object]` | `FOOD(units)`, `RESOURCE(patch_id)`, `PILE(type, units)` — at most one object per cell |
 | Agents | sparse `Dictionary[cell -> agent_id]` | myrmeks and predators — at most one agent per cell |
@@ -117,7 +117,7 @@ Each cell is a stack of layers:
 
 The world is divided into **64x64 chunks** (a 32x32 grid at the default 2048x2048). A chunk stores an active flag, its agent/object lists, and a changed flag for the minimap. The **active zone** — chunks within a radius of the nest plus chunks with known cells or agents — is the only place spawning and regeneration run; the rest of the map sleeps until discovered.
 
-**Generation:** seed + size (256–2048, multiple of 64) + water/rock shares + patch count → `FastNoiseLite` terrain smoothed by a cellular automaton; the start point is the centre of the largest connected ground region, cleared to radius 12; guarantees near the start (≥2 resource patches and ~20 food within 30 cells) make the first day hard but possible. The queen's cell becomes `QUEEN_CHAMBER` at no cost; there is no starting nest.
+**Generation:** seed + size (256–2048, multiple of 64) + water/rock/highland shares + patch count → `FastNoiseLite` terrain (lakes and channels; rock clusters; **highland massifs** as ellipse blobs + noise) smoothed by a cellular automaton; the start point is the centre of the largest connected ground region, cleared to radius 12; guarantees near the start (≥2 resource patches, ~20 food within 30 cells, and the start region not enclosed by massifs) make the first day hard but possible. A `QUEEN_CHAMBER` (the brood dome) is placed free on the cell just north of the queen at spawn — the queen stands beside it; there is no starting nest.
 
 **Dynamics:** food clusters spawn per active chunk (`T_food`/`p_food`); depleted patches regenerate after `T_res`; each predator species is kept at a target count, spawning on a 60–150 cell ring outside the nest's vision; a predator carcass becomes `FOOD`.
 
@@ -518,7 +518,7 @@ Since the sim is pure data, saving is serialization: format version, seed and pa
 
 ## Configuration
 
-Defaults are data (`res://data/*.tres` — `roles.tres`, `predators.tres`, `sim_params.tres`), edited live from the parameters panel. Key defaults: world 2048x2048; chunk 64; water/rock 12%/10%; 40 patches (10–60 units); 60 starting food items; active radius 200; 10 ticks/s; day 600/60/400/60; `N_plan` 10; roles 15/20/15/30/20; food reserve 20; `seal_at_night` on; `T_food` 200 / `p_food` 0.3; `T_res` 3000; predators 3/2/2 on a 60–150 ring; `queen_brain` `PROGRAM` with `baseline.lua` (`BUILTIN` before v0.5 exists, and as the fallback); `N_revision` 1120; LLM min interval 60 s; provider Gemini 3.1 Pro (`MOCK` in tests); `build_time` 10; `demolish_time` 5; `pave_speed` 2; `pave_traffic` 30/day; `autosave_ticks` 1120. `plan_errors_to_fail` 3 applies from v0 — that many misfires in a row drop the nest to `BUILTIN`. The judging data and defaults are v1.5: the six goals with their floors and ambition targets, the per-situation demand vectors and the coverage vectors in `sim_params.tres`; `probation_days` 1, `capacity_grace` 3 days, `warning_days_to_fail` 2, `library_attempts` 2 per crisis, `situation_hysteresis` 1 day, `similarity_eps` 0.1 (normalized policy distance), `blacklist_days` 5 sim-days; floors — population halving in a day, a starved queen, a food store empty for a whole day, capacity below population beyond `capacity_grace`.
+Defaults are data (`res://data/*.tres` — `roles.tres`, `predators.tres`, `sim_params.tres`), edited live from the parameters panel. Key defaults: world 2048x2048; chunk 64; water/rock/highland 12%/10%/8%; 40 patches (10–60 units); 60 starting food items; active radius 200; 10 ticks/s; day 600/60/400/60; `N_plan` 10; roles 15/20/15/30/20; food reserve 20; `seal_at_night` on; `T_food` 200 / `p_food` 0.3; `T_res` 3000; predators 3/2/2 on a 60–150 ring; `queen_brain` `PROGRAM` with `baseline.lua` (`BUILTIN` before v0.5 exists, and as the fallback); `N_revision` 1120; LLM min interval 60 s; provider Gemini 3.1 Pro (`MOCK` in tests); `build_time` 10; `demolish_time` 5; `pave_speed` 2; `pave_traffic` 30/day; `autosave_ticks` 1120. `plan_errors_to_fail` 3 applies from v0 — that many misfires in a row drop the nest to `BUILTIN`. The judging data and defaults are v1.5: the six goals with their floors and ambition targets, the per-situation demand vectors and the coverage vectors in `sim_params.tres`; `probation_days` 1, `capacity_grace` 3 days, `warning_days_to_fail` 2, `library_attempts` 2 per crisis, `situation_hysteresis` 1 day, `similarity_eps` 0.1 (normalized policy distance), `blacklist_days` 5 sim-days; floors — population halving in a day, a starved queen, a food store empty for a whole day, capacity below population beyond `capacity_grace`.
 
 ## Tech stack
 
@@ -531,8 +531,8 @@ Defaults are data (`res://data/*.tres` — `roles.tres`, `predators.tres`, `sim_
 | Randomness | `RandomNumberGenerator`, named streams | worldgen · spawner · combat · strategy · interventions, each derived from the master seed (`rng.gd`) |
 | Pathfinding | Hand-written weighted BFS + `AStarGrid2D` | Distance field for the global case, engine A* on a bounded rectangle for the local one — §Pathfinding |
 | Persistence | `var_to_bytes` + `FileAccess.open_compressed`, JSON header | Plain types only (never `*_with_objects`), background-thread writes, temp-then-rename — §Saves |
-| Rendering | **¾ RTS view on an axis-aligned square grid** (never diamond isometric): `TileMapLayer` tile window with **Y-sort** · `MultiMeshInstance2D` (myrmeks — per-instance pick from a five-direction frame atlas via a small shader) · `AnimatedSprite2D` (predators, directional states) · `Sprite2D` (objects) · `CanvasModulate` + `PointLight2D` (day/night) | Tall sprites (walls, rocks, the dome) carry a top and a front face and overlap the cell above, Y-sorted; the logical grid and every coordinate stay square. Only a ~128x96 window around the camera is filled; myrmek positions interpolate between ticks; a seed-hashed, render-only decor layer dresses ground cells |
-| Art | **SVG**, rasterized at import (128 px/cell, mipmaps), tinted via `modulate` | Sharp from 8 to 48 px per cell; role and day phase are colour, **direction is frames** (five per pose, west mirrored). The ¾ view grows the set to ~50 pieces for v0 and ~90 for the full game — the accepted price of the look; each piece stays simple |
+| Rendering | **2:1 isometric presentation over the square data grid** (128×64 diamond): `TileMapLayer` in Isometric mode or a custom sorter · depth sort by `x + y`, then `x` · `MultiMeshInstance2D` (myrmeks — per-instance pick from the eight-heading atlas, per-role sheets) · `AnimatedSprite2D` (predators) · `Sprite2D` (objects) · `CanvasModulate` + `PointLight2D` (day/night) | Only presentation rotates — every coordinate, the minimap and the click math stay square (click-to-cell is the inverse projection). The ground renders as one painted surface (noise-blended biome tints); creep as the render-derived field; upright sprites stand on their diamonds. Only a window around the camera is filled; positions interpolate between ticks; the seed-hashed decor layer (incl. trees with canopy fade) dresses the ground |
+| Art | **Hand-painted raster** (PNG master 128 px/cell, mipmaps; exports 128/64/32/16) in the StarCraft-1 / WarCraft-2 tradition; the handoff's SVGs (`specification/design_handoff_myrmex_ui/`) are the shape and composition reference, never shipped | Creatures come from one parametric 3D rig projected into **eight headings** (five painted, three mirrored) with **per-role colour passes** — painted art is never `modulate`-tinted; day phases stay a full-screen overlay. Legible 16–64 px per cell. Budget ~60 pieces v0, ~110 full |
 | Config data | Godot `Resource` `.tres` files | `roles.tres`, `predators.tres`, `sim_params.tres` — defaults are data, editable live from the parameters panel |
 | LLM | **Gemini 3.1 Pro** (Google AI API) via `HTTPRequest`, behind an abstracted provider seam | Alongside: OpenAI-compatible, Anthropic, local Ollama, and `MOCK` (reads a program from a file) — the only provider used in tests. Async; keys in a gitignored `.env` loaded into the environment (§Security), server-side only from v4 |
 | Tests | **gdUnit4**, headless | `scripts/test.sh` is the canonical gate: unit, contract, determinism, strategy-safety, balance smoke. No paid API calls, ever |
@@ -612,6 +612,8 @@ Decisions still open, each with the current recommendation. When one is settled,
 ---
 
 ## History of changes
+
+**v1.18 (27.09.2026)** — adopted the design handoff v2.0 (its §10 accepted in full, with three engineering answers): the presentation becomes 2:1 isometric over the unchanged square data grid (depth sort x+y, inverse projection for clicks; minimap stays square), the ground becomes one painted noise-blended surface, creep is a render-derived field, **`HIGHLAND` joins the terrain enum** with worldgen massifs and a start-not-enclosed guarantee, trees enter the decor layer as passable landmarks with canopy fade, the art pipeline becomes hand-painted raster with per-role colour passes and the eight-heading rig (~60 pieces v0 / ~110 full), and the `QUEEN_CHAMBER` spawns on the cell north of the queen. Engineering answers folded in: dirt trails derive from the v1.4 traffic field (none in v0), the UI keeps **myrmek** as the creature's display name while adopting brood mother / lurker / tusk brute / winged shade, and the canopy fade resolves trees hiding agents.
 
 **v1.17 (27.09.2026)** — the projection flipped to the ¾ RTS view by the author's decision: Y-sort and top+front faces for tall sprites, five-direction frame atlases for agents (MultiMesh per-instance selection via a small shader), the square axis-aligned grid kept — diamond isometric and 3D cameras excluded. The simulation is untouched; View, the Rendering and Art rows of the Tech stack carry the change.
 

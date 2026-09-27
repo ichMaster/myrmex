@@ -1,6 +1,6 @@
 # Roadmap — Myrmex
 
-Document version 1.8 — 27 September 2026.
+Document version 1.9 — 27 September 2026.
 
 Seven versions, built in order: **v0** prototype "First Night" (headless core, three roles, the spider, sandboxed Lua strategies, the Gemini loop) → **v1** the full nest (big world, six roles, three predators, paving, the full StateView, the arena, full UI) → **v2** births → **v3** replay → **v4** server and clients → **v5** nests at war → **v6** evolution and the genome. Versions are numbered from 0; phases inside a version are numbered `vA.B`. Each phase lists a **Goal**, a short description, a **Tasks** list, and a **Definition of Done (DoD)**, and ships with the automated tests that encode its DoD (see [ARCHITECTURE.md](ARCHITECTURE.md) §Testing).
 
@@ -12,7 +12,7 @@ Seven versions, built in order: **v0** prototype "First Night" (headless core, t
 
 ## v0 — Prototype "First Night"
 
-The living nest in miniature, built to answer three questions: does the vector look hold up at different zooms, is the simulation interesting to watch (roles, food economy, the first night), and does the "report → Gemini → program → behaviour change" loop work. Not a separate codebase — v1 with reduced scope: a 256x256 world without chunks (global BFS, 1 px/cell minimap), **three roles** (worker = scout+carrier+harvester, builder, guard; no cargo handover), 40 myrmeks + the queen (22/8/10), the spider only, fixed-ring nest plans, a tiny `StateView` (~10 state variables, 6 policy fields), two zooms (16/32 px), two interventions, one autosave file. Everything kept without compromise: pure-data sim, determinism, one agent per cell, energy and hunger, fog of war with a frontier, walls/gaps/night sealing, day–night with predator multipliers, the bare start, SVG + MultiMesh rendering. Estimated size: three to four thousand lines of GDScript. Depends on: nothing — this is the foundation.
+The living nest in miniature, built to answer three questions: does the vector look hold up at different zooms, is the simulation interesting to watch (roles, food economy, the first night), and does the "report → Gemini → program → behaviour change" loop work. Not a separate codebase — v1 with reduced scope: a 256x256 world without chunks (global BFS, 1 px/cell minimap), **three roles** (worker = scout+carrier+harvester, builder, guard; no cargo handover), 40 myrmeks + the queen (22/8/10), the spider only, fixed-ring nest plans, a tiny `StateView` (~10 state variables, 6 policy fields), two zooms (16/32 px), two interventions, one autosave file. Everything kept without compromise: pure-data sim, determinism, one agent per cell, energy and hunger, fog of war with a frontier, walls/gaps/night sealing, day–night with predator multipliers, the bare start, painted-raster sprites + MultiMesh rendering (the handoff SVGs serve as placeholders until painted art lands). Estimated size: three to four thousand lines of GDScript. Depends on: nothing — this is the foundation.
 
 ### v0.1 — Headless simulation and world generator
 
@@ -22,7 +22,7 @@ Stand up `res://sim/` as pure data: layer arrays, the clock with the day cycle, 
 
 **Tasks:**
 - Project skeleton; `res://sim/` with `world.gd`, `clock.gd`, `rng.gd` (named streams derived from the master seed), `worldgen.gd`; parameters in `res://data/sim_params.tres`; the gdUnit4 addon and `scripts/test.sh` as the canonical headless test gate.
-- Worldgen from seed: noise water/rock + cellular smoothing, largest-region start point cleared to radius 12, start guarantees (≥2 patches, ~20 food within 30 cells), patches with shared reserves, starting food.
+- Worldgen from seed: noise water/rock + **highland massifs** (ellipse blobs + noise, impassable) + cellular smoothing, largest-region start point cleared to radius 12, start guarantees (≥2 patches, ~20 food within 30 cells, the start region not enclosed by massifs), patches with shared reserves, starting food.
 - The tick loop with the fixed phase order; day/dusk/night/dawn transitions; speed multipliers and step as sim-level controls.
 - Food spawning (`T_food`/`p_food`) and patch regeneration (`T_res`) — world-wide in v0 (no chunks).
 - Serialization (`var_to_bytes` compressed + JSON header) and a single-file autosave at dawn and on exit; launch resumes from it.
@@ -30,7 +30,7 @@ Stand up `res://sim/` as pure data: layer arrays, the clock with the day cycle, 
 
 **DoD:** a seeded headless run prints evolving world stats; two runs from one seed produce identical output; kill and relaunch resumes from the autosave and continues identically.
 
-**Tests:** worldgen guarantees (start clearing, patches, food, connectivity); determinism — same seed → identical state hash after N ticks; save/load round-trip → bit-identical continuation.
+**Tests:** worldgen guarantees (start clearing, patches, food, connectivity with highland present); determinism — same seed → identical state hash after N ticks; save/load round-trip → bit-identical continuation.
 
 ### v0.2 — Render, camera, minimap, day and night
 
@@ -39,15 +39,15 @@ Stand up `res://sim/` as pure data: layer arrays, the clock with the day cycle, 
 The view layer over the untouched sim: flat tiles in a window around the camera, the minimap, day/night tinting, and time controls.
 
 **Tasks:**
-- Tile-window renderer (~128x96 buffer refilled on camera moves) in the **¾ RTS view** on the square grid: flat ground tiles (no autotiling yet), tall tiles — wall, rock — with a top + front face, **Y-sort**; zooms 16 and 32 px.
-- Camera panning (WASD, edge, drag); minimap 256x256 at 1 px/cell with the colour priority (unknown > predator > myrmek > food > resource > nest > water > rock > ground), viewport frame, click-to-move; updates only for changed cells every `N_map` ticks.
+- The **isometric renderer**: the data grid stays square, presentation maps `(x,y) → ((x−y)·64, (x+y)·32)` with depth sort by `x+y` and the inverse projection for click-to-cell; a window around the camera; **painted continuous ground** — four biome tints blended by seeded value-noise (baked or shader-blended, no visible cell seams); the wall as ridge **run/corner/end** picked by neighbours (+ the construction ghost); upright rock and highland crags; zooms 16 and 32 px.
+- Camera panning (WASD, edge, drag); minimap 256x256 at 1 px/cell with the colour priority (unknown > predator > myrmek > food > resource > nest > creep > water > highland > rock > ground-by-biome), viewport frame, click-to-move; updates only for changed cells every `N_map` ticks.
 - `CanvasModulate` day-phase gradient; pause / 1x / 4x / 16x / single step; day-and-tick counter with phase indicator.
-- The **decor layer**: ~6 small ground-dressing sprites (grass tufts ×2, pebbles, flower, dry patch, moss fleck) placed by `hash(world_seed, cell)` on ground cells (~1 per 5) — render-only, no sim state, no minimap, nothing in saves.
+- The **decor layer ×14** (tufts A/B, pebbles, flowers ×2, dry patch, moss, clover, leaf litter, mushrooms, twig, stone, dirt crack, and passable **trees** in seeded groves — the canopy fades to ~40% when an agent is beneath) placed by `hash(world_seed, cell)` — render-only, no sim state, no minimap, nothing in saves.
 - SVG sprite pipeline: import at 128 px/cell with mipmaps; tint via `modulate`.
 
 **DoD:** the generated world scrolls smoothly at both zooms at 16x speed; the minimap tracks changes and moves the camera; night is visibly night; the field reads varied — dressed ground, not a flat green.
 
-**Tests:** the view never mutates sim state (contract); minimap block invalidation on cell changes; Y-sort order — an agent south of a wall draws in front of it, north behind; decor placement is a pure function of (seed, cell) — identical dressing on identical seeds, absent from saves. Visual quality is assessed manually (prototype criterion: pleasant at both zooms).
+**Tests:** the view never mutates sim state (contract); minimap block invalidation on cell changes; depth order — an agent south-east of a ridge draws in front of it, north-west behind (sort by `x+y`); click-to-cell inverse projection round-trips; decor placement is a pure function of (seed, cell) — identical dressing on identical seeds, absent from saves. Visual quality is assessed manually (prototype criterion: pleasant at both zooms).
 
 ### v0.3 — Three roles, building, the first night
 
@@ -56,7 +56,7 @@ The view layer over the untouched sim: flat tiles in a window around the camera,
 Agents arrive: worker/builder/guard state machines, the queen's tactical task board, knowledge and frontier, the energy economy, and nest construction with night sealing.
 
 **Tasks:**
-- Agent records and the shared state machine (`IDLE`/`GO_TO`/`WORK`/`RETURN`/`DEPOSIT` + `HUNGRY`/critical); 8-directional movement, one agent per cell; `MultiMeshInstance2D` rendering with interpolation, role tint, and per-instance selection from the five-direction frame atlas (N·NE·E·SE·S, west mirrored) via a small shader.
+- Agent records and the shared state machine (`IDLE`/`GO_TO`/`WORK`/`RETURN`/`DEPOSIT` + `HUNGRY`/critical); 8-directional movement, one agent per cell; `MultiMeshInstance2D` rendering with interpolation and per-instance selection from the **eight-heading atlas** (five painted, three mirrored), one sheet per role (worker/builder/guard), via a small shader.
 - Roles: worker (carries if there is something to carry, mines if a patch is assigned, else explores the frontier), builder (walls, storages, open/close gaps), guard (patrol ring, stand in gaps); the immobile queen.
 - Knowledge mask + incremental frontier; reveal radius 2 (5 for exploring workers); pathfinding: global weighted BFS distance field + local `AStarGrid2D`; unreachable targets never assigned.
 - Task board on `N_plan`: `EXPLORE`, `FETCH_FOOD`, `HARVEST`, `BUILD`, `FEED_MYRMEK`, `PATROL`, `HOLD_GAP`, `OPEN_GAP`, `CLOSE_GAP`; ranking safety → feeding → food → build → explore; greedy assignment by distance; the hardcoded first-day plan. This is `queen_brain = BUILTIN`: the queen directs every myrmek on her own algorithm, with no strategy program anywhere in the project yet (Lua arrives in v0.5).
@@ -72,7 +72,7 @@ Agents arrive: worker/builder/guard state machines, the queen's tactical task bo
 **Goal:** danger that makes guards matter.
 
 **Tasks:**
-- Spider: ambush behaviour, `WANDER`/`HUNT`/`ATTACK`/`EAT`/`REST`, energy-driven hunting, night multipliers (cooldown, eating, vision); spawn ring 60–150 cells, target count; directional frames for its three poses (snapped to four directions, west mirrored).
+- Spider: ambush behaviour, `WANDER`/`HUNT`/`ATTACK`/`EAT`/`REST`, energy-driven hunting, night multipliers (cooldown, eating, vision); spawn ring 60–150 cells, target count; eight-heading frames for its three poses (five painted, three mirrored); displayed in the UI as the **lurker**.
 - Combat: 8-adjacent damage each tick, stacking attackers, gap crossfire; worker one-hit deaths, `FLEE` for workers; carcass → `FOOD` hauled to storage; cargo drop on death.
 - Balance pass: food spawn vs deaths vs guard coverage; death counters by cause.
 
@@ -149,7 +149,7 @@ Scale the prototype to the full simulation: the big chunked world with an active
 **Goal:** three species and guards with doctrine.
 
 **Tasks:**
-- Beetle (slow tank) and lizard (chaser; night extra step every 2nd tick; flees under 30% hp); per-species target counts; predator energy lifecycle.
+- Beetle (slow tank) and lizard (chaser; night extra step every 2nd tick; flees under 30% hp) — displayed as the **tusk brute** and the **winged shade**; per-species target counts; predator energy lifecycle.
 - Guard tasks `ESCORT` (accompany carrier/harvester groups) and `GUARD_SITE` (patch, food source, road section).
 - Defence-strategy weights in the policy: patrol / gaps / escort / sites — expressible as "fortress", "convoy", "outposts", or adaptive mixes.
 
@@ -164,6 +164,7 @@ Scale the prototype to the full simulation: the big chunked world with an active
 **Tasks:**
 - `PAVEMENT`: build/demolish like walls (1 resource, returned), `move_cooldown` ÷ `pave_speed`, reduced step energy; walls may replace paving.
 - Decaying per-cell traffic counters on known cells; threshold `pave_traffic` → `PAVE` tasks queued after walls and storages.
+- **Dirt trails**: the same traffic field renders as worn ground along real routes — a render-only tint into the painted ground (this is where the handoff's trails become live data rather than a mock).
 - Weighted pathfinding already prices paving; predators gain nothing.
 
 **DoD:** roads emerge along real routes to living patches and rich food areas and are not built to depleted ones; travel on them is measurably faster and cheaper.
@@ -198,7 +199,7 @@ Scale the prototype to the full simulation: the big chunked world with an active
 - All interventions: place food, create a patch, summon any predator, delete object/agent, heal, reveal an area — all journaled commands.
 - Full inspector; statistics with charts over the last N days; complete event log.
 - Save system: rotation (last 3 autosaves + one per day), the saved-days list with rollback, optional named slots (F5), background-thread writes with temp-and-rename, resume-on-launch, "new world" as the deliberate alternative.
-- Graphics polish: zooms 8/16/32/48, terrain-set autotiling with ¾-aware edges (shores, rock edges, walls, paving), `PointLight2D` at the gap, cargo sprites.
+- Graphics polish: the **16/32/48/64** zoom ladder, the full isometric autotiling set (shores, highland edges, ridge runs, creep roads), `PointLight2D` at the gap, cargo in the scythes.
 
 **DoD:** a full nest per this specification is observable, steerable, and tunable end to end; autosaves rotate and any saved day restores; the sim still runs and tests still pass headless.
 
@@ -355,6 +356,8 @@ Selection at both levels: bodies and strategies. Depends on: v2 (births), v5 (mu
 ---
 
 ## History of changes
+
+**v1.9 (27.09.2026)** — the design handoff v2.0 lands in the phases: v0.1 worldgen gains highland massifs with the start-not-enclosed guarantee; v0.2 becomes the isometric renderer (depth-sort and click-projection tests), painted biome ground, ridge run/corner/end walls and the fourteen-piece decor layer with passable trees; v0.3/v0.4 move to eight-heading atlases with per-role sheets and the lurker display name; v1.3 adopts tusk brute / winged shade; v1.4 renders dirt trails from the traffic field; v1.6's ladder becomes 16–64 with the isometric autotiling set.
 
 **v1.8 (27.09.2026)** — the ¾ RTS view lands in the phases: v0.2 renders tall tiles with top+front faces under Y-sort (with the Y-sort ordering test), v0.3 selects myrmek directional frames per MultiMesh instance, v0.4 gives the spider directional poses, v1.6's autotiling becomes ¾-aware.
 

@@ -1,6 +1,6 @@
 # Vision — Myrmex
 
-Document version 1.9 — 27 September 2026.
+Document version 1.10 — 27 September 2026.
 
 ## In one sentence
 
@@ -67,7 +67,7 @@ The drama is arithmetic, not scripting. These numbers are the intended starting 
 
 ## The look
 
-The logic is cellular; the picture is free. Vector art — simple shapes, soft gradients and shadows, deliberately no pixel aesthetic — in a **three-quarter RTS view**, the StarCraft feel: a high-angle camera over an axis-aligned **square** cell grid (never a diamond-isometric one, never a 3D camera — the volume lives in the sprites). Walls, rocks, storages and the queen's dome are drawn with a top face and a darker front face, cast soft shadows and overlap the cell above, Y-sorted; the ground plane stays a flat grid. Agents are **directional frames** — five per pose (N, NE, E, SE, S), the west side mirrored — still one myrmek silhouette for every role, tinted, so the set stays drawable by one person. Sprites stay sharp from 8 to 48 px per cell; movement is interpolated so the cell-by-cell logic looks alive; the ground is dressed by a render-only **decor layer** — grass tufts, pebbles, flowers, dry patches, seeded from the world hash — so the field never reads as a flat green while the simulation stays untouched (decor is under-agent scale: nothing looks blocking that is not); night falls as a smooth tone shift with warm light at the nest gap.
+The logic is cellular; the picture is free. Hand-painted art in the StarCraft-1 tradition, shipped as raster at 128 px per cell — no pixel aesthetic and **no boxes** — presented as a **2:1 isometric world**: the simulation's grid stays square and axis-aligned in data, only the picture rotates (a cell becomes a 128×64 screen diamond, depth-sorted by x+y). Nothing is an extruded tile: highland is jagged crags, the nest wall a run of fleshy mounds, storages are sacs and bone hollows — volume comes from overlapping masses with a lit and a dark facet and a soft cast shadow. Creatures and nest belong to one original **living-hive** species — chitin plates over muscle, bone scythes, amber eyes, creep spreading from the nest — our own silhouettes, nobody else's designs. Every creature is authored once as a small parametric 3D rig and projected into **eight headings** (five painted, three mirrored); roles are per-role colour passes, because tinting a painting flattens it. The ground is one continuous painted surface — biome tints blended by seeded noise, dressed by the render-only decor layer (tufts, pebbles, flowers, mushrooms… and passable **trees**, whose canopy fades when an agent walks beneath) — so the field never reads as a flat green while the simulation stays untouched. Legible from 16 to 64 px per cell; movement is interpolated; night falls as one full-screen tone with warm light at the nest gap (v1).
 
 ## Principles
 
@@ -90,7 +90,7 @@ The logic is cellular; the picture is free. Vector art — simple shapes, soft g
 
 ## Glossary
 
-- **Myrmek** — the ant-like creature (from Greek *μύρμηξ*); plural myrmeks. Never called "ant" in prose.
+- **Myrmek** — the ant-like creature (from Greek *μύρμηξ*); plural myrmeks. Never called "ant" in prose, and **myrmek is also its UI display name**. Other display names: the queen appears as the **brood mother**; the predators as the **lurker**, **tusk brute** and **winged shade** — code identifiers stay `queen`, `spider`, `beetle`, `lizard`.
 - **Nest** — both the community (queen + myrmeks, in code `Nest`, keyed by `nest_id`) and its base: ground enclosed by walls with storages inside.
 - **Queen** — the stationary coordinator; runs the task board and executes the strategy program. Births from v2.
 - **Gap** — a ground cell left open in the wall ring; the only way in for anyone, including predators. No special "entrance" type exists.
@@ -98,6 +98,8 @@ The logic is cellular; the picture is free. Vector art — simple shapes, soft g
 - **Frontier** — known passable cells bordering unknown ones; scouts take frontier targets in per-scout sectors.
 - **Active zone** — chunks near the nest plus known/occupied ones; the only place food, resources, and predators spawn. The rest of the world sleeps.
 - **Chunk** — a 64x64 cell block; the unit of activity, spawning, and minimap updates.
+- **Highland** — impassable mountain massifs, a terrain type beside water and rock; worldgen places them as noisy blobs.
+- **Creep** — the living-hive stain spreading from the nest, a render-derived 0–1 field (a possible v2 mechanic).
 - **Patch / pile** — a resource deposit worked by harvesters / loose units left on the ground for carriers.
 - **Paving** — a structure that speeds myrmeks up (never predators); roads grow automatically along high-traffic routes.
 - **Task board** — the tactical level: typed, ranked tasks (`EXPLORE`, `FETCH_FOOD`, `HARVEST`, `BUILD`, `FEED_MYRMEK`, `HOLD_GAP`, …) assigned greedily by distance.
@@ -119,6 +121,8 @@ The logic is cellular; the picture is free. Vector art — simple shapes, soft g
 ---
 
 ## History of changes
+
+**v1.10 (27.09.2026)** — adopted the design handoff v2.0: 2:1 isometric presentation over the square data grid, hand-painted raster in the StarCraft-1 tradition with per-role colour passes and the eight-heading rig, the no-boxes rule, the living-hive species, the continuous painted ground with passable trees (canopy fade), highland and creep in the glossary, and the UI display names (myrmek kept; brood mother, lurker, tusk brute, winged shade).
 
 **v1.9 (27.09.2026)** — the projection decision reversed by the author after side-by-side mockups: the look is now the ¾ RTS view (sprite volume on an axis-aligned square grid, directional agent frames), replacing pure top-down; diamond isometric and true 3D remain excluded.
 
