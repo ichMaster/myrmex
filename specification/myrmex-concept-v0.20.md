@@ -1,6 +1,6 @@
 # Myrmex — Concept Specification of a Myrmek Nest Simulation
 
-Version 0.19 (concept). 27 September 2026.
+Version 0.20 (concept). 27 September 2026.
 Project name: **Myrmex** (from Greek *μύρμηξ*, "ant").
 Creature: **myrmek** (plural: **myrmeks**), an ant-like creature that lives in a nest with central coordination.
 Nest (in code: `Nest`) means both the community of myrmeks with their queen and their base: a patch of ground enclosed by walls, with storages inside. The myrmeks make and guard the gaps in the wall themselves.
@@ -91,7 +91,7 @@ Day cycle (parameters in ticks): day 600, dusk 60, night 400, dawn 60. Total 112
 **Effects of night:**
 
 - Predators: `move_cooldown` is halved, the time to eat a myrmek is halved, vision radius grows by 50%.
-- Myrmeks: vision radius decreases by 1 (parameter).
+- Myrmeks: vision radius decreases by 1 (parameter). This applies to detection; the reveal radius (section 5.2) is capped by current vision, so at night scouts reveal cells within radius 4, while the radius-2 reveal of the other roles is unaffected.
 - Queen: night policy (parameter): scouts and carriers return to the nest as far as the interior allows (priority to hungry myrmeks and those carrying cargo), the rest gather near the gap under guard; guards stand in and near the gaps; at dusk builders close the gaps with walls and at dawn tear them down (`seal_at_night`, on by default); myrmeks left outside spend the night by the wall under guard; if the food store is below the reserve, work continues despite the risk.
 - Graphics: smooth tone change via `CanvasModulate`, warm light near the nest gap.
 
@@ -112,6 +112,8 @@ Day cycle (parameters in ticks): day 600, dusk 60, night 400, dawn 60. Total 112
 ### 5.1 Common model
 
 Agent fields: `id`, `kind` (myrmek or predator), `type` (role or species), `nest_id`, `cell`, `hp`, `hp_max`, `energy`, `energy_max`, `move_cooldown`, `move_timer`, `vision`, `attack`, `carry` (type, units, capacity), `state`, `task_id`, `target_cell`, `path`. There is no age in v1: a myrmek lives until it is eaten or starves.
+
+Movement is 8-directional: an agent steps to any of the 8 neighbouring cells, and a diagonal step costs the same ticks and energy as an orthogonal one. All radii and adjacency (vision, reveal, combat) use Chebyshev distance; this is why wall rings are squares (section 6.2).
 
 ### 5.2 Myrmek roles
 
@@ -162,6 +164,8 @@ A myrmek in the nest with a non-empty storage eats by itself. For a hungry myrme
 | Beetle | Slow tank: wanders, attacks everything nearby, does not flee | 3 / 2 | 4 / 6 | 40 | 6 | 30 / 15 | 8 |
 | Lizard | Fast hunter: chases spotted myrmeks, at night takes an extra step every second tick, flees when hp is below 30% | 1 / 1+ | 8 / 12 | 25 | 5 | 15 / 6 | 6 |
 
+The lizard's "1+" night cooldown is not a shorter cooldown but the extra step every second tick described in the behaviour column.
+
 Common rules:
 
 - Predators have energy; a hungry one hunts, a sated one wanders or rests; without prey it dies.
@@ -172,7 +176,7 @@ Common rules:
 
 ### 5.6 Combat
 
-Every tick, an agent with an attack value that has an enemy in one of the 8 neighbouring cells deals damage to it. Several guards around one predator add up their damage. A predator in a gap is attacked by guards both from inside and outside. A dead predator becomes food. A dead myrmek disappears (the predator ate it).
+Every tick, an agent with an attack value that has an enemy in one of the 8 neighbouring cells deals damage to it. Several guards around one predator add up their damage. A predator in a gap is attacked by guards both from inside and outside. A dead predator becomes food. A myrmek killed by a predator disappears (the predator ate it); a myrmek that starves disappears too. In both cases any carried units drop on the myrmek's cell as a `FOOD` or `PILE` object; if the cell already holds an object, the units are lost.
 
 ---
 
@@ -189,9 +193,9 @@ A `known` array per nest. A cell becomes known when any myrmek of the nest sees 
 Every `N_plan` ticks the queen:
 
 1. **Gathers state:** known unclaimed food, piles, patches with reserves, predators on the known map, hungry myrmeks, the build queue, storage levels, frontier size.
-2. **Builds a task board:** tasks have a type, target, priority and assignee. Types: `EXPLORE`, `FETCH_FOOD`, `FETCH_PILE`, `HARVEST`, `BUILD`, `FEED_ANT`, `DELIVER_RES`, `PATROL`, `INTERCEPT`, `HOLD_GAP`, `OPEN_GAP`, `CLOSE_GAP`, `PAVE`, `ESCORT` (group escort), `GUARD_SITE` (guarding a location).
+2. **Builds a task board:** tasks have a type, target, priority and assignee. Types: `EXPLORE`, `FETCH_FOOD`, `FETCH_PILE`, `HARVEST`, `BUILD`, `FEED_MYRMEK`, `DELIVER_RES`, `PATROL`, `INTERCEPT`, `HOLD_GAP`, `OPEN_GAP`, `CLOSE_GAP`, `PAVE`, `ESCORT` (group escort), `GUARD_SITE` (guarding a location).
 3. **Ranks:** safety (predator near the nest) → feeding the hungry → food income → construction → resources → exploration. Weights are policy parameters.
-4. **Assigns:** free myrmeks of the required role take the nearest task (greedily, by distance field). A task is cancelled if its target disappears, and the myrmek gets a new one.
+4. **Assigns:** free myrmeks of the required role take the nearest task (greedily, by distance field). Known but unreachable cells — those with no finite distance in the field, for example across water — are never assigned as targets. A task is cancelled if its target disappears, and the myrmek gets a new one.
 5. **Night policy** (section 4).
 6. **Defence strategy:** guards are distributed between patrol, gaps, escort and site guarding according to policy weights. This is the space for strategies: "fortress" (everyone at the gaps, only short trips), "convoy" (every carrier group escorted), "outposts" (guards stand at patches and near food, with roads between them), or adaptive, where the weights depend on where myrmeks have recently died. In v1 the strategy is a set of parameters; later the queen can switch them herself.
 
@@ -272,7 +276,7 @@ Rules:
 
 ```
 Resource patch --(harvester mines)--> cargo or pile near the patch
-   --(harvester or carrier)--> resource storage --(builder)--> wall or nest storage
+   --(harvester or carrier)--> resource storage --(builder)--> wall or storage cell
 
 Food on the map --(carrier)--> food storage --> queen, hungry myrmeks in the nest
                                             --(carrier)--> hungry myrmeks in the field
@@ -421,7 +425,7 @@ Pure simulation in arrays separate from rendering; deterministic seed and discre
 | Construction | Walls and storages; the nest plan is fixed rings that grow with the population | Paving and roads by traffic |
 | Queen's brain | `PROGRAM` and `LLM`. The strategy is a GDScript module with `plan(s)`, loaded on the fly, with static checking and a dry run. The `StateView` API is tiny: about ten state variables (phase, population, deaths since dawn, food in storage, nearest food, predators within a radius, whether the ring is closed, capacity versus population, gap status) and six policy fields (food versus construction weight, share of guards at gaps, close gaps at night, ring radius, share of workers on resources, construction priority). The LLM writes the program at the start and revises it after the first night and on the "more than three deaths since dawn" event. Providers: Gemini 3.1 Pro and `MOCK`, which reads the program from a file | Lua runner with sandbox, full API, strategy library, arena |
 | Graphics | Flat tiles without autotiling; two zoom levels, 16 and 32 px; `CanvasModulate` for night; no light near the gap | Autotiling, four zoom levels, light |
-| UI | Camera; pause and speeds 1x, 4x, 16x; minimap; click on a myrmek with a basic inspector; statistics (population, food, deaths); event log; queen panel with the latest plan and explanation; two interventions: place food and release a spider. Parameters are edited in `.tres` | Parameters panel, full inspector, all interventions |
+| UI | Camera; pause and speeds 1x, 4x, 16x; minimap; click on a myrmek with a basic inspector; statistics (population, food, deaths); event log; queen panel with the current program and policy; two interventions: place food and release a spider. Parameters are edited in `.tres` | Parameters panel, full inspector, all interventions |
 | Saving | Automatic only: one file, written at dawn and on exit, on launch the game continues from it; no slots and no manual saving | Autosave rotation, list of days, named slots |
 | Cut entirely | Replay, paving and roads, escort, predator escalation, tests as a separate system (a headless run printing statistics to the console remains) | All of this in v1 and later |
 
@@ -429,7 +433,7 @@ Pure simulation in arrays separate from rendering; deterministic seed and discre
 
 - The graphics look good at both zoom levels, and 40 myrmeks at 16x speed do not drop frames.
 - Without the LLM the nest survives the first night in at least half of the seeds, i.e. the balance is not broken.
-- The plan from Gemini arrives in less than ten seconds and visibly changes behaviour: after losses more guards stand at the gaps, and when space runs short a new ring starts earlier.
+- The program from Gemini arrives in less than ten seconds and visibly changes behaviour: after losses more guards stand at the gaps, and when space runs short a new ring starts earlier.
 
 ### 11.4 Iteration order
 
@@ -502,24 +506,36 @@ There are no open questions: all concept decisions have been made. New questions
 
 ## 14. Change history
 
+**v0.20 (27.09.2026)**
+
+- The specification is now maintained in English; the Ukrainian original is kept for history, frozen at v0.19, as `myrmex-concept-v0.19-UA.md`.
+- Movement specified as 8-directional with uniform step cost; all radii and adjacency use Chebyshev distance (5.1).
+- Deaths unified: a starved myrmek disappears like an eaten one, and in both cases carried units drop on the cell as `FOOD`/`PILE`, or are lost if the cell already holds an object (5.6).
+- Known but unreachable cells (no finite distance in the field) are never assigned as task targets (6.2).
+- Clarified the night vision reduction: it affects detection, and the reveal radius is capped by current vision, so scouts reveal within radius 4 at night (4).
+- The task `FEED_ANT` renamed to `FEED_MYRMEK`, closing the rename left unfinished in v0.2 (6.2).
+- Fixed pre-v0.16 leftovers: the prototype's queen panel shows the current program and policy, and the evaluation criterion says "the program from Gemini" (11.2, 11.3).
+- The change history rephrased in a neutral voice ("per review feedback" instead of addressing a dialogue partner) (14).
+- Wording: "wall or storage cell" in the flow diagram (6.5); a note on the lizard's "1+" night cooldown (5.5).
+
 **v0.19 (27.09.2026)**
 
 - Closed the last two open questions for v1.3: server access is a single shared token for all clients, without accounts; hosting is a home Linux machine, with external access through a tunnel or VPN (12). Section 13 is empty.
 
 **v0.18 (27.09.2026)**
 
-- Per your feedback, saving became automatic: written at every dawn, on exit and before a new strategy version, continuing from the latest autosave on launch, rotation (last three plus one per day), writing in a thread from a copy of the arrays and via a temporary file (9, 7, 10).
+- Per review feedback, saving became automatic: written at every dawn, on exit and before a new strategy version, continuing from the latest autosave on launch, rotation (last three plus one per day), writing in a thread from a copy of the arrays and via a temporary file (9, 7, 10).
 - Minimal autosave to a single file with continuation on launch returned to the prototype; added to the first iteration (11).
 
 **v0.17 (27.09.2026)**
 
-- Per your decision, the strategy language is real code instead of JSON rules: GDScript loaded on the fly in the prototype, with static checking and a dry run; in v1, Lua 5.4 via godot-luaAPI with a sandbox and instruction limit; both behind the `StrategyRunner` interface (6.3, 9, 11).
+- Per a review decision, the strategy language is real code instead of JSON rules: GDScript loaded on the fly in the prototype, with static checking and a dry run; in v1, Lua 5.4 via godot-luaAPI with a sandbox and instruction limit; both behind the `StrategyRunner` interface (6.3, 9, 11).
 - Added the paragraph "What the strategy sees": access is not automatic but goes through `StateView`, a copy of simple values plus helper functions for large structures; the `World` object is not passed (6.3). The example program was rewritten in Lua.
 - Updated the v1 scope (1), the "Queen's brain" row (2), the description of version validation in LLM mode (6.3), and the contents of `res://llm` (9).
 
 **v0.16 (27.09.2026)**
 
-- Following your idea, the queen's strategy became a program: subsection 6.3 was rewritten. The LLM no longer produces a plan for a horizon but writes and revises a rule program (JSON with conditions in Godot `Expression`, actions on the policy and memory) that the queen runs herself on every cycle. The modes are now `PROGRAM` and `LLM` (plus `LEARNED` in v2); the `ADAPTIVE` mode disappeared, because adaptive rules are just a program. Added validation of versions by dry run and a strategy library with an arena.
+- Following a review suggestion, the queen's strategy became a program: subsection 6.3 was rewritten. The LLM no longer produces a plan for a horizon but writes and revises a rule program (JSON with conditions in Godot `Expression`, actions on the policy and memory) that the queen runs herself on every cycle. The modes are now `PROGRAM` and `LLM` (plus `LEARNED` in v2); the `ADAPTIVE` mode disappeared, because adaptive rules are just a program. Added validation of versions by dry run and a strategy library with an arena.
 - Updated the v1 scope (1), the "Queen's brain" row in key decisions (2), the queen panel in the UI (7), the files `strategy.gd`, `queen_policy.gd`, `nest_report.gd` and the contents of `res://llm` (9), the `queen_brain` and `N_revision` parameters instead of `N_policy` (10), and the "Queen's brain" row in the prototype with a tiny rule language (11).
 - The "queen learning" item in the roadmap was rewritten as "the program as a genome": revision by metrics, arena and selection, `LEARNED` mode for program parameters (12).
 
@@ -545,27 +561,27 @@ There are no open questions: all concept decisions have been made. New questions
 
 **v0.11 (27.09.2026)**
 
-- Following your suggestion, the "queen learning" item in the roadmap (11) was rewritten to the "LLM as teacher, neural network as experience" scheme: a shared directive schema for both, an ensemble of small MLPs as a confidence measure plus state novelty, a request to the LLM only at low confidence, an experience memory weighted by outcomes, network weights as a genome for inheritance. A `LEARNED` (v2) row was added to the modes table in 6.3.
-- Per your clarification, 6.3 and 11 now state explicitly: the LLM and the neural network work only at the strategic level. They produce a plan for a horizon of `N_policy` ticks and do not interfere with tactics; the LLM can propose a different horizon for the next decision.
+- Following a review suggestion, the "queen learning" item in the roadmap (11) was rewritten to the "LLM as teacher, neural network as experience" scheme: a shared directive schema for both, an ensemble of small MLPs as a confidence measure plus state novelty, a request to the LLM only at low confidence, an experience memory weighted by outcomes, network weights as a genome for inheritance. A `LEARNED` (v2) row was added to the modes table in 6.3.
+- Per a review clarification, 6.3 and 11 now state explicitly: the LLM and the neural network work only at the strategic level. They produce a plan for a horizon of `N_policy` ticks and do not interfere with tactics; the LLM can propose a different horizon for the next decision.
 
 **v0.10 (27.09.2026)**
 
-- Following your suggestion, two v2 items were added to the roadmap (11): "queen learning" (the policy as a genome that improves and is inherited; memory for the LLM queen; evolution at the nest level) and "nest splitting" (a daughter queen, the `kin_timer` kinship timer after which the parent nest becomes hostile, inheritance of the genome with mutation).
+- Following a review suggestion, two v2 items were added to the roadmap (11): "queen learning" (the policy as a genome that improves and is inherited; memory for the LLM queen; evolution at the nest level) and "nest splitting" (a daughter queen, the `kin_timer` kinship timer after which the parent nest becomes hostile, inheritance of the genome with mutation).
 
 **v0.9 (27.09.2026)**
 
-- Following your suggestion, an LLM was added for the queen: a new subsection 6.3 "The queen's brain: algorithms and LLM" with `FIXED`, `ADAPTIVE`, `LLM` modes, a state report, a directive schema, an asynchronous call, providers, and a response log for reproducibility. The former 6.3 and 6.4 became 6.4 and 6.5.
+- Following a review suggestion, an LLM was added for the queen: a new subsection 6.3 "The queen's brain: algorithms and LLM" with `FIXED`, `ADAPTIVE`, `LLM` modes, a state report, a directive schema, an asynchronous call, providers, and a response log for reproducibility. The former 6.3 and 6.4 became 6.4 and 6.5.
 - Updated the v1 scope (1), key decisions (2: "Queen's brain" row, determinism clarified), UI (7: "Queen" panel, mode toggle), project structure (9: `queen_policy.gd`, `nest_report.gd`, `res://llm/`), parameters (10), roadmap (11: LLM queens for multiple nests), and open questions (12).
 
 **v0.8 (27.09.2026)**
 
-- Closed four open questions based on your answers: predators on roads are not sped up (6.3, the `pave_predators` parameter removed from 10); predator carcasses are food that carriers take to storage (3.4); guards escort groups and guard locations (5.2, the `ESCORT` and `GUARD_SITE` tasks in 6.2); myrmeks have no age in v1 (5.1, 7, 11; moved to "Later").
+- Closed four open questions based on review answers: predators on roads are not sped up (6.3, the `pave_predators` parameter removed from 10); predator carcasses are food that carriers take to storage (3.4); guards escort groups and guard locations (5.2, the `ESCORT` and `GUARD_SITE` tasks in 6.2); myrmeks have no age in v1 (5.1, 7, 11; moved to "Later").
 - Added a "Defence strategy" item to 6.2 with example strategies ("fortress", "convoy", "outposts", adaptive).
 - Only the graphics style remains among the open questions (12).
 
 **v0.7 (27.09.2026)**
 
-- Following your idea, the "floor" returned in a new role: the `PAVEMENT` structure (paving) speeds up myrmek movement and is laid both inside the nest and outside as roads (3.1, 5.2, 6.3).
+- Following a review suggestion, the "floor" returned in a new role: the `PAVEMENT` structure (paving) speeds up myrmek movement and is laid both inside the nest and outside as roads (3.1, 5.2, 6.3).
 - Roads are planned by traffic: the nest counts passes over cells and paves the busiest routes (6.3); the `PAVE` task was added (6.2).
 - Pathfinding became weighted: paving is cheaper than ground (9); the energy cost per step on paving was reduced (5.4); a paving colour was added to the minimap (7) and to autotiling (8).
 - Added the `pave_speed`, `pave_traffic`, `pave_predators` parameters and cost (10); a new open question 5 about predators on roads (12).
@@ -578,7 +594,7 @@ There are no open questions: all concept decisions have been made. New questions
 
 **v0.5 (27.09.2026)**
 
-- Per your feedback, "floor" and "entrance" were removed as structure types: the nest is a patch of ground enclosed by walls; the interior is computed by a flood fill from the queen chamber (section 6.3), not built, and costs nothing.
+- Per review feedback, "floor" and "entrance" were removed as structure types: the nest is a patch of ground enclosed by walls; the interior is computed by a flood fill from the queen chamber (section 6.3), not built, and costs nothing.
 - Walls are impassable to everyone without exception. A gap is an ordinary ground cell in the wall ring; the myrmeks make gaps themselves (builders place and dismantle walls) and guard them (sections 2, 6.3).
 - Predators no longer "break the entrance" and are never "too big": the "Nest" column and the `BREACH` state were removed from 5.5, and the `breach_time` parameter from section 10; a predator enters only through an open gap (5.5, 5.6).
 - The `HOLD_ENTRANCE` task was replaced with `HOLD_GAP`, and `OPEN_GAP` and `CLOSE_GAP` were added (6.2); the `seal_at_night` option was added (sections 4, 10).

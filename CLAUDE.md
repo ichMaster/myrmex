@@ -4,12 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Current state
 
-Myrmex is at the concept stage: there is no code yet, only the specification in [specification/myrmex-concept-v0.19.md](specification/myrmex-concept-v0.19.md). No build, lint or test commands exist yet. The spec is the source of truth; when implementing, follow its section numbers and parameter names.
+Myrmex is at the concept stage: there is no code yet, only the specification in [specification/myrmex-concept-v0.20.md](specification/myrmex-concept-v0.20.md). No build, lint or test commands exist yet. The spec is the source of truth; when implementing, follow its section numbers and parameter names.
 
 ## Spec conventions
 
 - The spec is versioned by filename (`myrmex-concept-vX.Y.md`). When changing it, bump the version in the header and filename and add an entry at the top of section 14 (history of changes), listing the affected section numbers in parentheses, in the existing style. The spec language is English. The Ukrainian original, [specification/myrmex-concept-v0.19-UA.md](specification/myrmex-concept-v0.19-UA.md), is kept for history, frozen at v0.19 — never update it.
-- Terminology is fixed: the creature is a **myrmek** (never "ant" in prose), the base/community is the **nest** (never "colony" or "anthill"). Code identifiers use `nest_id`, `myrmek.gd`. The identifier `FEED_ANT` remains from before the rename (spec §14, v0.2).
+- Terminology is fixed: the creature is a **myrmek** (never "ant" in prose), the base/community is the **nest** (never "colony" or "anthill"). Code identifiers use `nest_id`, `myrmek.gd`, `FEED_MYRMEK`.
 - Section 13 (open questions) is currently empty; new questions go there.
 
 ## What is being built
