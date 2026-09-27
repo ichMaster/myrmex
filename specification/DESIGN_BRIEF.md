@@ -1,6 +1,6 @@
 # Design Brief — Myrmex UI Mockups
 
-Document version 2.1 — 27 September 2026.
+Document version 2.2 — 27 September 2026.
 
 **The canonical design brief now lives with the design itself: [design_handoff_myrmex_ui/DESIGN_BRIEF.md](design_handoff_myrmex_ui/DESIGN_BRIEF.md) (v2.0).** This file is a pointer kept so links and history do not break; do not add content here — amend the handoff brief instead.
 
@@ -29,7 +29,13 @@ Three engineering answers to the handoff's open points:
 - **Combat FX accepted as render-only** UI-layer sprites (slash, burst, blood pool, alert, brief fallen silhouette). **No corpse entity** enters the simulation, and "carriers clear bodies" is deliberately not adopted — sim deaths still vanish per ARCHITECTURE §Combat.
 - Discrepancies resolved: brood mother is `#B65C8F` + gold per §4 (the `#F0C06A` in §5.12a is stale); builder scale read as **1.3** per HANDOFF.md (the creature README's 1.1 is stale). Known sheet gaps (worker true N/S/E/W, builder back views, stalker headings) are regeneration items, prompts 1–3 and 9–10.
 
+## Outstanding design items (not yet in the handoff)
+
+- **The defeat card** (v0): a predator touching the brood mother — or her starvation — ends the run. Overlay: dark veil ~70% over the frozen world; centered panel (~560×320) in the HUD chrome with a creep-and-bone trim; display line **THE HIVE IS LOST**; subline `a lurker reached the brood mother — the colony is infected` (or `the brood mother has starved`); stats line `Day 3 · 2 nights survived · 41 myrmeks`; buttons **New world** (primary) and **Linger** (raised — dismisses the card, the frozen world stays observable).
+
 ## History of changes
+
+**v2.2 (27.09.2026)** — retired [DESIGN_BRIEF_PROTOTYPE.md] (the mockups exist; handoff v2.8 and ARCHITECTURE §What v0 implements cover its content); its one unique piece, the defeat-card spec, moved here as an Outstanding design item.
 
 **v2.1 (27.09.2026)** — the handoff package updated in place to v2.8; added the acceptance addendum (hybrid generated/procedural pipeline, new palette, gold-and-blue predators with final names, render-only combat FX, resolved discrepancies).
 
