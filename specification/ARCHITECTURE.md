@@ -1,6 +1,6 @@
 # Architecture — Myrmex
 
-Document version 1.11 — 27 September 2026.
+Document version 1.13 — 27 September 2026.
 
 ## Overview
 
@@ -280,11 +280,12 @@ flowchart TB
     board --> agents["one task per myrmek"]
     agents -->|"outcomes: deaths · food · capacity"| world
     agents -.-> score["strategy_eval — dawn scorecard<br/>declared goals vs actuals + engine floors"]
-    goalsd[("goals declared by the program")] -.-> score
+    goalsd[("goals: coverage over the six,<br/>normalized to sum to 1")] -.-> score
     score -->|"healthy · warning"| planf
     score -->|"failing"| ladder["escalation ladder<br/>demote to BUILTIN · blacklist ·<br/>best-fit eligible candidate · then the LLM"]
     world -.-> sit["situation: FOUNDING · SIEGE · FAMINE ·<br/>CROWDED · STABLE (hysteresis)"]
-    sit -->|"the demand: which goals matter now"| ladder
+    sit -->|"demand over the same six goals"| ladder
+    goalsd -.->|"fit = Σ demand × coverage"| ladder
     sit -.-> sv
     ladder -.-> planf
     planf -.->|"request_revision"| ladder
@@ -311,23 +312,63 @@ The strategic and tactical levels run on completely different clocks: `plan()` i
 
 **Who decides what the nest needs *now*.** A strategy declaring its own goals only answers half the question; the other half is which goals matter at this moment, and that is **the engine's call, not the strategy's and not the model's**. Every cycle `strategy_eval.gd` classifies the nest's **situation** from the same numbers the task board already has — a pure function of state, so it is deterministic and testable:
 
-| Situation | Recognized by | What it demands |
+| Situation | Recognized by | What it demands most |
 |---|---|---|
-| `FOUNDING` | No closed ring yet (day 1, or after a ring is lost) | Close a ring with a gap and stock the food store before dusk — nothing else matters |
-| `SIEGE` | Predators inside the known radius, or deaths rising | Guards at the gaps, sealing, short trips; losses down even at the cost of income |
-| `FAMINE` | Store below the reserve, or queen energy falling | Food income above everything; harvesting and building yield |
-| `CROWDED` | Capacity below population (beyond `capacity_grace`) | A wider ring and storages; capacity ahead of population |
-| `STABLE` | None of the above | Expansion, roads, exploration — the only situation where growth is the point |
+| `FOUNDING` | No closed ring yet (day 1, or after a ring is lost) | `shelter`, then `food` — close a ring with a gap and stock the store before dusk |
+| `SIEGE` | Predators inside the known radius, or deaths rising | `survival` and `shelter` — losses down even at the cost of income |
+| `FAMINE` | Store below the reserve, or queen energy falling | `food`, then `queen` — income above everything |
+| `CROWDED` | Capacity below population (beyond `capacity_grace`) | `capacity` — a wider ring and storages, ahead of population |
+| `STABLE` | None of the above | `territory` and `capacity` — the only situation where growth is the point |
+
+Each situation's demand is a weighted vector over the six goals below (the exact numbers are in the demand table).
 
 This is what makes picking a strategy possible: a candidate's **declared goals are matched against the current demand**, and the ladder promotes the best *fit* among eligible programs, breaking ties by arena rank. `growth.lua` is an excellent program and the wrong one during a `FAMINE`; `fortress.lua` is right for a `SIEGE` and will slowly strangle a `STABLE` nest. Situations carry **hysteresis** (`situation_hysteresis`, default 1 day): a situation must hold before it takes effect, so the nest does not swap strategies every dawn on noise. The current situation and its demand ride in the `StateView` (`s.situation`), so a program can also branch on it itself, and in the LLM dossier, so the model writes for the situation the nest is actually in.
 
 The observer may **pin an objective** from the queen panel — "grow capacity", "survive the night" — which overrides the classifier until unpinned. That is a queen-level knob like choosing a strategy, not an order to a myrmek, and it enters as a journaled command at a tick boundary, so replays are exact.
 
-**Every strategy declares its goals.** A program exports a `goals` table beside `plan` — the outcomes it claims it will deliver, in the same spirit as the policy it returns: `survive_first_night`, `max_deaths_per_day`, `min_food_store`, `min_capacity_ratio`, `ring_closed_by`. Fields it omits take the engine's defaults, and the whole table is bounds-checked exactly like a policy. This is what makes a strategy judgeable rather than merely runnable: it states what "working" means for *it*, so `fortress.lua` can promise zero deaths at the cost of slow growth while `growth.lua` promises capacity ahead of population and accepts losses.
+**The six goals — a closed list.** Everything a nest can be trying to do is one of six, fixed once and shared by the situations, the strategies, the scorecard, the arena and the model. Each has one measurable indicator, a **floor** the engine enforces unconditionally, and an **ambition target** that counts as fully achieved:
 
-**Declared goals cannot be gamed.** The engine keeps its own **floors** and a breach is a failure whatever `goals` says: the population must not halve in a day, the queen must not starve, the food store must not sit empty for a whole day, capacity must not stay below population for more than `capacity_grace` days. A declaration laxer than a floor is clamped to it and the clamp is logged — a strategy cannot buy survival by lowering its own bar.
+| Goal | Indicator | Floor (absolute) | Ambition target |
+|---|---|---|---|
+| `survival` | myrmek deaths per day ÷ population | population must not halve in a day | no deaths for a whole day |
+| `food` | store ÷ reserve, and income ÷ consumption | the store must not sit empty for a whole day | store ≥ 2× reserve with income ≥ consumption |
+| `shelter` | share of the population sheltered at night, ring intact | — (a breach shows up as `survival`) | everyone inside, every gap sealed at dusk |
+| `capacity` | interior capacity ÷ population | not below population for more than `capacity_grace` days | capacity ≥ population + margin |
+| `territory` | known cells gained per day, patches found | — | the frontier keeps moving, patches in reserve |
+| `queen` | queen energy, distance from the nearest predator | the queen must not starve | energy ≥ 70 with no predator inside |
 
-**The scorecard.** At every dawn `strategy_eval.gd` compares the past day's actuals against the effective goals, field by field, and produces a `Scorecard` (§Contracts) with a verdict: **healthy** (every goal met), **warning** (soft goals missed, no floor breached), **failing** (a floor breached, or two consecutive `warning` days). Floors are also checked immediately, not only at dawn, so a collapse does not get a full day to finish. A freshly promoted version gets `probation_days` (default 1) of grace on soft goals — a first day is noisy by nature — while floors apply from its first tick. Every scorecard is journaled, and those journalled scorecards are exactly what the LLM's revision prompt and the arena's ranking read, so "good" has one definition across the live game, the arena and the model.
+**Every strategy covers all six — to a degree.** A program exports a `goals` table beside `plan` giving each of the six a number from 0 to 1, and the engine **normalizes the vector to sum to 1**. That normalization is the whole point: ambition is a budget, so a program cannot promise everything, it has to choose. The shipped four make their ideas arithmetic:
+
+| Strategy | `survival` | `food` | `shelter` | `capacity` | `territory` | `queen` |
+|---|---|---|---|---|---|---|
+| `baseline.lua` | 0.20 | 0.25 | 0.20 | 0.15 | 0.10 | 0.10 |
+| `fortress.lua` | 0.40 | 0.15 | 0.30 | 0.05 | 0.00 | 0.10 |
+| `forager.lua` | 0.15 | 0.45 | 0.10 | 0.10 | 0.15 | 0.05 |
+| `growth.lua` | 0.10 | 0.20 | 0.10 | 0.35 | 0.20 | 0.05 |
+
+**Each situation demands the same six, weighted.** The demand is a vector over the identical list, authored in `sim_params.tres`, each row summing to 1:
+
+| Situation | `survival` | `food` | `shelter` | `capacity` | `territory` | `queen` |
+|---|---|---|---|---|---|---|
+| `FOUNDING` | 0.20 | 0.25 | 0.35 | 0.05 | 0.05 | 0.10 |
+| `SIEGE` | 0.40 | 0.10 | 0.30 | 0.05 | 0.00 | 0.15 |
+| `FAMINE` | 0.20 | 0.50 | 0.05 | 0.00 | 0.05 | 0.20 |
+| `CROWDED` | 0.15 | 0.20 | 0.20 | 0.40 | 0.00 | 0.05 |
+| `STABLE` | 0.15 | 0.20 | 0.05 | 0.25 | 0.25 | 0.10 |
+
+**Who authors the demand vector.** Somebody has to say how badly each of the six is needed *right now*, because that vector is what selects the strategy. Three authors, in strict precedence:
+
+1. **The engine, by default.** The situation classifier picks one of the five authored demand vectors above — a pure function of state with hysteresis. Nothing is invented at runtime: the five vectors are data in `sim_params.tres`, so the same state always produces the same demand, and a test can assert it.
+2. **The observer, when they choose to.** From the queen panel they can pin a situation, or set the six numbers directly for finer control than the five presets give; the pin holds until released. It arrives as a journaled command at a tick boundary, so a replay makes the same choice.
+3. **The model — never.** The LLM writes programs; it does not set the demand. That boundary is deliberate: the demand is the *question* and a program is the *answer*, and a model that set both would be grading its own homework — the arena's rankings and the scorecard's verdicts would stop meaning anything.
+
+The six numbers are therefore the shared language of the whole mechanism: the engine asks in them, a strategy answers in them, the scorecard judges in them, the arena ranks in them, and the dossier explains a failure in them. In v0 the demand is always one of the five authored vectors; blending two adjacent situations into a weighted mix is an additive refinement for v1.5 if edge cases call for it.
+
+**Fit is a dot product.** `fit = Σ demand[g] × coverage[g]` over the six — one multiplication per goal, deterministic, and explainable to the observer as a number. In a `FAMINE`: `forager` scores 0.28, `baseline` 0.20, `fortress` 0.19, `growth` 0.15, so the ladder promotes `forager` and the queen panel can say why in one line. In a `SIEGE` the same arithmetic gives `fortress` 0.28 against `baseline` 0.19. Ties break by arena rank for that situation (v1.5).
+
+**Coverage sets the bar the strategy is held to; floors are not negotiable.** For each goal the expected value is `floor + coverage[g] × (target − floor)`: claim 0.45 of `food` and you are judged near the ambition target on food; claim 0.00 of `territory` and an unexplored day is not held against you. What coverage can never do is lower a **floor** — the population halving, a starved queen, a store empty for a day, capacity under population past its grace — those are failures at any coverage, which is why `fortress.lua` declaring `queen` 0.10 still cannot let the queen starve.
+
+**The scorecard.** At every dawn `strategy_eval.gd` measures the six indicators over the past day, compares each against its coverage-derived expectation, and produces a `Scorecard` (§Contracts) with a verdict weighted by the **current situation's demand**: **healthy** (every demanded goal met), **warning** (a goal missed that this situation weights lightly), **failing** (a floor breached, a heavily demanded goal missed, or two consecutive `warning` days). So the same miss is read differently depending on what the nest actually needed — missing `territory` during a `FAMINE` is noise; missing `food` is the whole problem. Floors are checked immediately, not only at dawn, so a collapse does not get a full day to finish. A freshly promoted version gets `probation_days` (default 1) of grace on everything but the floors. Every scorecard is journaled, and those journaled scorecards are exactly what the LLM's revision prompt and the arena's ranking read, so "good" has one definition across the live game, the arena and the model.
 
 **The escalation ladder.** On a `failing` verdict the queen does not keep hoping:
 
@@ -411,8 +452,8 @@ The stable seams. Changing a contract must change its contract test (§Testing).
 - **Agent record** and **cell layers** as defined in §Agents / §World model.
 - **Save format**: versioned JSON header + compressed `var_to_bytes` body (§Saves).
 - **Strategy version record**: `{id, source, author_mode, tick, change_note, metrics}` — the journal replays runs without re-calling the model.
-- **Situation** (derived by the engine, pure function of state): `{situation: FOUNDING|SIEGE|FAMINE|CROWDED|STABLE, since_tick, demand: {goal: weight}, pinned_by_observer}` — carried in `StateView` and the LLM dossier; hysteresis before a change takes effect.
-- **Goals** (declared by a strategy): `{survive_first_night, max_deaths_per_day, min_food_store, min_capacity_ratio, ring_closed_by}` — every field optional, bounds-checked, clamped up to the engine's floors. Matched against the situation's `demand` to score fit when the ladder picks a candidate.
+- **Situation** (derived by the engine, pure function of state): `{situation: FOUNDING|SIEGE|FAMINE|CROWDED|STABLE, since_tick, demand: {the six goals → weight, summing to 1}, pinned_by_observer}` — carried in `StateView` and the LLM dossier; hysteresis before a change takes effect.
+- **Goal coverage** (declared by a strategy): `{survival, food, shelter, capacity, territory, queen}`, each 0..1, normalized by the engine to sum to 1 — the strategy's ambition budget. It sets each goal's expectation (`floor + coverage × (target − floor)`) and is dotted with the situation's `demand` to score fit. It can never lower a floor.
 - **Scorecard**: `{tick, day, strategy_id, goals: [{goal, expected, actual, met}], verdict: healthy|warning|failing, floor_breached}` — journaled per day; read by the queen panel, the LLM revision prompt and the arena's ranking, which is why all three agree on what "good" means.
 - **Fingerprint**: the policy vector a program produces over a fixed set of recorded states, plus its declared `goals` — the similarity key that makes siblings skippable and a rehashed LLM answer rejectable.
 - **Attempt ledger** (per run, journaled): `{crisis_id, strategy_id, fingerprint, outcome: promoted|failed|skipped_similar|rejected_rehash, tick, blacklist_until_day}` — the record the ladder consults, so "already tried" survives a save/load and replays identically.
@@ -459,7 +500,7 @@ Since the sim is pure data, saving is serialization: format version, seed and pa
 
 ## Configuration
 
-Defaults are data (`res://data/*.tres` — `roles.tres`, `predators.tres`, `sim_params.tres`), edited live from the parameters panel. Key defaults: world 2048x2048; chunk 64; water/rock 12%/10%; 40 patches (10–60 units); 60 starting food items; active radius 200; 10 ticks/s; day 600/60/400/60; `N_plan` 10; roles 15/20/15/30/20; food reserve 20; `seal_at_night` on; `T_food` 200 / `p_food` 0.3; `T_res` 3000; predators 3/2/2 on a 60–150 ring; `queen_brain` `PROGRAM` with `baseline.lua` (`BUILTIN` before v0.5 exists, and as the fallback); `N_revision` 1120; LLM min interval 60 s; provider Gemini 3.1 Pro (`MOCK` in tests); `build_time` 10; `demolish_time` 5; `pave_speed` 2; `pave_traffic` 30/day; `autosave_ticks` 1120. Scorecard defaults and floors: `max_deaths_per_day` 5% of population, `min_food_store` = the food reserve, `min_capacity_ratio` 1.0, `probation_days` 1, `capacity_grace` 3 days, `warning_days_to_fail` 2, `library_attempts` 2 per crisis, `situation_hysteresis` 1 day, `similarity_eps` 0.1 (normalized policy distance), `blacklist_days` = the whole run in v0 and 5 sim-days from v1.5; floors — population halving in a day, a starved queen, a food store empty for a whole day.
+Defaults are data (`res://data/*.tres` — `roles.tres`, `predators.tres`, `sim_params.tres`), edited live from the parameters panel. Key defaults: world 2048x2048; chunk 64; water/rock 12%/10%; 40 patches (10–60 units); 60 starting food items; active radius 200; 10 ticks/s; day 600/60/400/60; `N_plan` 10; roles 15/20/15/30/20; food reserve 20; `seal_at_night` on; `T_food` 200 / `p_food` 0.3; `T_res` 3000; predators 3/2/2 on a 60–150 ring; `queen_brain` `PROGRAM` with `baseline.lua` (`BUILTIN` before v0.5 exists, and as the fallback); `N_revision` 1120; LLM min interval 60 s; provider Gemini 3.1 Pro (`MOCK` in tests); `build_time` 10; `demolish_time` 5; `pave_speed` 2; `pave_traffic` 30/day; `autosave_ticks` 1120. The six goals with their floors and ambition targets, the per-situation demand vectors, and the shipped strategies' coverage vectors all live in `sim_params.tres`. Scorecard defaults: `probation_days` 1, `capacity_grace` 3 days, `warning_days_to_fail` 2, `library_attempts` 2 per crisis, `situation_hysteresis` 1 day, `similarity_eps` 0.1 (normalized policy distance), `blacklist_days` = the whole run in v0 and 5 sim-days from v1.5; floors — population halving in a day, a starved queen, a food store empty for a whole day.
 
 ## Tech stack
 
@@ -551,6 +592,10 @@ Decisions still open, each with the current recommendation. When one is settled,
 ---
 
 ## History of changes
+
+**v1.13 (27.09.2026)** — made explicit who authors the current goal vector, since that vector is what selects the strategy: the engine by default (one of five authored demand vectors, pure function of state with hysteresis), the observer by pinning a situation or setting the six numbers directly (a journaled tick-boundary command), and the model never — the demand is the question, a program is the answer, and a model setting both would grade its own homework. Noted that blending adjacent situations is an additive v1.5 refinement.
+
+**v1.12 (27.09.2026)** — goals became a closed list of six (`survival`, `food`, `shelter`, `capacity`, `territory`, `queen`), each with one indicator, an absolute floor and an ambition target, replacing the earlier set of optional declared fields. A strategy now covers **all six to a degree**: a vector of 0..1 values normalized to sum to 1, so ambition is a budget and nothing can promise everything. Each situation demands the same six as a weighted vector, fit is their dot product (worked examples for `FAMINE` and `SIEGE`), each goal's expectation derives from coverage as `floor + coverage × (target − floor)`, and the scorecard's verdict is weighted by the situation's demand — so missing `territory` in a famine is noise while missing `food` is failure. Floors remain unconditional at any coverage. Coverage and demand tables for the four shipped strategies and five situations are given in full and live in `sim_params.tres`; the brain diagram now shows the dot product.
 
 **v1.11 (27.09.2026)** — answered who sets the *current* goals, which declared goals alone could not: the engine classifies the nest's **situation** (`FOUNDING`, `SIEGE`, `FAMINE`, `CROWDED`, `STABLE`) as a pure, hysteresis-damped function of state, and that situation's **demand** is what a candidate's declared goals are matched against — so the ladder promotes the best *fit* rather than the next name in a list, with arena rank breaking ties. The situation rides in `StateView` (a program may branch on it) and in the LLM dossier (the model writes for the real situation); the observer may pin an objective from the queen panel as a journaled tick-boundary command. Added the `Situation` contract, `situation_hysteresis`, the classifier in `strategy_eval.gd`, the situation in the queen panel, and updated the two-level brain and ladder diagrams to show demand feeding candidate choice.
 

@@ -1,6 +1,6 @@
 # Vision — Myrmex
 
-Document version 1.5 — 27 September 2026.
+Document version 1.6 — 27 September 2026.
 
 ## In one sentence
 
@@ -23,12 +23,11 @@ A private research-and-observation project for its author, and later a close cir
 "Strategy" here is not a metaphor and not a bag of tuned weights — it is code the queen executes herself on every planning cycle, in microseconds, with a `memory` that survives between calls. It can be read, diffed, edited by hand, stored in a library, raced on the arena, and — later — inherited by a daughter queen as a genome. A whole strategy looks like this:
 
 ```lua
--- what this strategy promises; the engine holds it to this
+-- ambition is a budget: six goals, 0..1 each, normalized to sum to 1.
+-- this one is a forager — food first, and it says so.
 goals = {
-  survive_first_night = true,
-  max_deaths_per_day  = 3,
-  min_food_store      = 30,
-  min_capacity_ratio  = 1.0,
+  survival = 0.15, food = 0.45, shelter = 0.10,
+  capacity = 0.10, territory = 0.15, queen = 0.05,
 }
 
 memory = memory or { lost_last_day = 0 }
@@ -108,7 +107,7 @@ The logic is cellular; the picture is free. Vector art — simple shapes, soft g
 - **StrategyRunner** — the seam hiding the strategy execution environment (sandboxed Lua 5.4 via godot-luaAPI) from the rest of the code.
 - **`queen_brain`** — who decides the policy: `BUILTIN` (no program — the queen's own algorithm directs every myrmek), `PROGRAM` (a hand-written Lua program), `LLM` (the model writes and revises one), `LEARNED` (v6).
 - **Situation** — what the nest needs right now, classified by the engine from its own numbers: `FOUNDING`, `SIEGE`, `FAMINE`, `CROWDED`, `STABLE`. It decides which goals matter, and therefore which strategy fits; the observer can pin one by hand.
-- **Goals** — what a strategy declares it will achieve (deaths per day, food store, capacity ratio, surviving the first night); clamped up to engine floors, so a strategy cannot lower its own bar.
+- **The six goals** — the closed list every nest works toward: `survival`, `food`, `shelter`, `capacity`, `territory`, `queen`. A strategy covers all six to a degree (0..1, summing to 1 — ambition is a budget), a situation demands the same six with weights, and fit is their dot product. Coverage sets the bar a strategy is held to; it can never lower a floor.
 - **Scorecard** — the dawn comparison of declared goals against actuals, with a healthy / warning / failing verdict; journaled, and read alike by the queen panel, the model and the arena.
 - **Escalation ladder** — what happens on a failing verdict: demote to `BUILTIN`, blacklist the version, try the next genuinely different library strategy within a small budget, then ask the LLM with a dossier of what failed.
 - **Fingerprint** — the policy vector a program produces on a fixed set of states; two programs that match are one idea, which is how siblings are skipped and a rehashed answer is refused.
@@ -120,6 +119,8 @@ The logic is cellular; the picture is free. Vector art — simple shapes, soft g
 ---
 
 ## History of changes
+
+**v1.6 (27.09.2026)** — goals became the closed list of six covered by every strategy to a degree (normalized to sum to 1), with fit as a dot product against the situation's demand; the worked example now declares a coverage vector (The strategy is a program, Glossary).
 
 **v1.5 (27.09.2026)** — added the engine-classified **situation** that decides which goals matter now, and therefore which strategy fits (The strategy is a program, Glossary).
 
