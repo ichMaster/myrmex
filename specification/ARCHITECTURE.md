@@ -1,6 +1,6 @@
 # Architecture — Myrmex
 
-Document version 1.13 — 27 September 2026.
+Document version 1.15 — 27 September 2026.
 
 ## Overview
 
@@ -28,6 +28,8 @@ flowchart LR
     sim -->|"var_to_bytes, background thread"| saves[("user:// saves<br/>+ strategy library")]
 ```
 
+How to read it: everything inside `res://sim/` is plain data stepped by the tick loop, and the arrows leaving it are read-only. Nothing on the right ever writes into the sim directly — the view's commands and the LLM's validated programs enter at tick boundaries, and a save is a serialization of the same data.
+
 From v4 the same `res://sim/` runs headless on a server and the observer becomes a thin client; nothing in the simulation changes:
 
 ```mermaid
@@ -43,6 +45,8 @@ flowchart LR
     proxy --> mac
     web -->|"camera rect · commands · chunk requests<br/>(one shared token)"| proxy
 ```
+
+The v4 split moves the identical sim behind a socket: the server owns the tick loop, the LLM calls and the saves; Caddy or nginx terminates TLS and serves the web build; clients keep only a local copy of what their camera can see, so bandwidth follows the viewport, not the population.
 
 ## What v0 implements
 
@@ -61,8 +65,8 @@ Everything below describes the full v1 system. The **v0 prototype** ([ROADMAP.md
 | **Nest — knowledge** | Full: per-nest `known` mask, incremental frontier, unknown cells excluded from paths and tasks | Nothing |
 | **Nest — structure** | Walls, storages, gaps, computed interior/capacity, demolition with resource return, night sealing; the build plan is **fixed rings that grow with population** | Traffic-driven planning, `PAVEMENT` and roads (v1.4) |
 | **Queen — tactical** | The task board with `EXPLORE`, `FETCH_FOOD`, `HARVEST`, `BUILD`, `FEED_MYRMEK`, `PATROL`, `HOLD_GAP`, `OPEN_GAP`, `CLOSE_GAP`; ranking, greedy assignment, the first-day plan | `FETCH_PILE`, `DELIVER_RES`, `INTERCEPT`, `PAVE`, `ESCORT`, `GUARD_SITE`; defence-strategy weights (v1.3) |
-| **Queen — strategic** | `StrategyRunner` with the **sandboxed Lua 5.4 runner** (sandbox, instruction limit, dry run), a **tiny `StateView`** (~10 scalars) and **6 policy fields**, version validation and journal, `BUILTIN` + `PROGRAM` + `LLM` modes, declared `goals` and the dawn scorecard with demotion to `BUILTIN` | The full `StateView` and policy schema, the full escalation ladder over a ranked library, the arena (v1.5) |
-| **LLM** | Gemini 3.1 Pro + `MOCK`; writes the program at start, revises after the first night and on "more than three deaths since dawn" | OpenAI-compatible, Anthropic, Ollama providers (v1.5) |
+| **Queen — strategic** | `StrategyRunner` with the **sandboxed Lua 5.4 runner** (sandbox, instruction limit, dry run), a **tiny `StateView`** (~10 scalars) and **6 policy fields**, `BUILTIN` + `PROGRAM` + `LLM` modes, **one shipped strategy** (`baseline.lua`), version validation and the journal. **Deliberately no judging machinery**: a broken version is rejected and the current keeps running; if nothing loads or `plan()` keeps misfiring, the nest drops to `BUILTIN` | The whole judging apparatus — six-goal coverage, the situation classifier, the scorecard, the escalation ladder with fingerprints and the ledger — plus the other shipped strategies, the full `StateView`/policy schema and the arena (v1.5) |
+| **LLM** | Gemini 3.1 Pro + `MOCK`; writes the program at start, revises on three plain triggers — the first night, more than three deaths since dawn, `request_revision` | OpenAI-compatible, Anthropic, Ollama providers; the scorecard-driven triggers (v1.5) |
 | **Pathfinding** | Weighted BFS distance field + local `AStarGrid2D`, recomputed **globally over the whole 256² world** | Incremental recomputation scoped to chunks (v1.1) |
 | **Saves** | Serialization of the full state; **one autosave file**, written at dawn and on exit; launch resumes from it | Rotation (3 + one per day), the saved-days list, named slots (v1.6) |
 | **Rendering** | SVG sprites, tile window, `MultiMeshInstance2D` myrmeks with interpolation, `CanvasModulate` day/night; **flat tiles, two zooms (16/32 px)** | Terrain-set autotiling, zooms 8–48, `PointLight2D` at the gap (v1.6) |
@@ -88,7 +92,7 @@ Estimated size of the whole prototype: three to four thousand lines of GDScript.
 - **Agents** (`agent.gd`, `myrmek.gd`, `predator.gd`). One shared record shape; per-role and per-species state machines. See §Agents.
 - **Nest** (`nest.gd`). Knowledge mask, frontier, storages, structures, build plan and queue, interior/capacity.
 - **Queen — tactical** (`queen_ai.gd`, `tasks.gd`). The task board: gather state → build tasks → rank → assign. See §The queen's brain.
-- **Queen — strategic** (`strategy.gd`, `strategy_lua.gd`, `queen_policy.gd`, `strategy_eval.gd`, `nest_report.gd`). The `StrategyRunner` seam with the sandboxed Lua 5.4 runner (godot-luaAPI, from v0.5), `StateView` assembly, policy validation, the `BUILTIN`/`PROGRAM`/`LLM` modes, the scorecard and escalation ladder, the strategy library, and report building for the LLM.
+- **Queen — strategic** (`strategy.gd`, `strategy_lua.gd`, `queen_policy.gd`, `strategy_eval.gd`, `nest_report.gd`). The `StrategyRunner` seam with the sandboxed Lua 5.4 runner (godot-luaAPI, from v0.5), `StateView` assembly, policy validation, the `BUILTIN`/`PROGRAM`/`LLM` modes, the scorecard and escalation ladder, the strategy library, and the LLM report and failure-dossier assembly.
 - **LLM providers** (`res://llm/`). Gemini 3.1 Pro (main), OpenAI-compatible, Anthropic, Ollama, and `MOCK` (reads a program from a file); the `StateView`/policy API description and prompts for the model.
 - **Pathfinding** (`pathfinding.gd`). Distance field + local A*. See §Pathfinding.
 - **Combat** (`combat.gd`). Adjacent-cell damage, deaths, carcasses, cargo drops.
@@ -142,6 +146,8 @@ flowchart LR
     r -.->|"tick + 1"| e
 ```
 
+One full pass is one tick, and the order is a contract: the environment moves first, the queen plans on her own cycle, myrmeks act before predators, combat resolves the encounters, knowledge is revealed from the new positions, and rendering comes last — only when a frame is actually drawn, which is why a headless run is the same simulation minus step 7.
+
 ## Agents
 
 One record shape for everyone: `id`, `kind`, `type`, `nest_id`, `cell`, `hp`/`hp_max`, `energy`/`energy_max`, `move_cooldown`/`move_timer`, `vision`, `attack`, `carry` (type, units, capacity), `state`, `task_id`, `target_cell`, `path`. No age. **Movement is 8-directional with uniform cost; all radii and adjacency use Chebyshev distance** — which is why wall rings are squares.
@@ -188,6 +194,8 @@ stateDiagram-v2
     FIGHT --> [*]: killed
 ```
 
+The working loop is the top row — take a task, walk, work, return, deposit. Everything else is an interruption: hunger overrides in two grades (ask for food at 40, abandon the task at 15), workers flee rather than fight, only guards enter `FIGHT`, and the two exits are being eaten or starving. Whatever a myrmek carried at death drops on its cell (§Combat).
+
 **Energy:** max 100; idle 0.01/tick; step 0.05 (+50% loaded; 0.03 on paving); attack 0.5; one food unit = +50; queen 0.1/tick, sated at ≥70; energy 0 = death. Energy and every other accumulated quantity are stored as **fixed-point integers** (thousandths of a unit: idle 10, step 50/75/30, attack 500, one food unit 50 000, max 100 000) — see §Determinism and replay. **On any death carried units drop on the cell as `FOOD`/`PILE` (lost if the cell already holds an object); an eaten or starved body disappears.**
 
 **Predators** (energy-driven: hungry hunts, sated wanders, starving dies):
@@ -215,6 +223,8 @@ stateDiagram-v2
     WANDER --> [*]: energy 0 — starved
 ```
 
+A predator is a hunger loop, not a script: it wanders until something edible enters its vision, hunts, strikes, and is then pinned in place for `eat_time` — the window in which guards kill it. Only the lizard flees when hurt; every carcass converts to `FOOD`, so a fight won feeds the nest.
+
 | Species | Behaviour | Cooldown d/n | Vision d/n | hp | Attack | Eat d/n | Carcass |
 |---|---|---|---|---|---|---|---|
 | Spider | Ambush near routes | 2 / 1 | 6 / 9 | 15 | 4 | 20 / 10 | 5 |
@@ -226,6 +236,7 @@ stateDiagram-v2
 ## Nest
 
 - **Knowledge:** a cell seen once by any nest myrmek is known forever; known cells show live state. The **frontier** (known passable cells bordering unknown) is maintained incrementally.
+
 ```
    outside                                  #  NEST_WALL — impassable to everyone
    · · · · · · · · · · ·                    .  interior ground (this is the capacity)
@@ -260,6 +271,8 @@ flowchart LR
     death["any death"] -.->|"carried units drop on the cell"| mapfood
 ```
 
+Two currencies with one junction each: resources flow patch → storage → structure and return whenever something is demolished; food flows map → storage → mouths, with carriers as the only movers between stations. Deaths leak carried units back onto the map, and predator carcasses are the reward channel for defence.
+
 ## The queen's brain
 
 **Tactical level — every `N_plan` ticks:** gather state (food, piles, patches, predators on the known map, hungry myrmeks, build queue, storage levels, frontier) → build the task board (`EXPLORE`, `FETCH_FOOD`, `FETCH_PILE`, `HARVEST`, `BUILD`, `FEED_MYRMEK`, `DELIVER_RES`, `PATROL`, `INTERCEPT`, `HOLD_GAP`, `OPEN_GAP`, `CLOSE_GAP`, `PAVE`, `ESCORT`, `GUARD_SITE`) → rank by policy (safety → feeding → food income → construction → resources → exploration) → assign greedily by the distance field. **Known but unreachable cells (no finite distance) are never assigned as targets.** A task whose target vanishes is cancelled. Guard distribution across patrol/gaps/escort/sites is the defence-strategy space ("fortress", "convoy", "outposts", adaptive). While no nest exists, a hardcoded first-day plan runs: harvesters to the nearest patch, builders raise a radius-5 ring (~40 walls) with one gap and a food storage, guards ring the queen, scouts open the surroundings.
@@ -273,8 +286,8 @@ flowchart TB
     world["sim state (the nest's known map only)"] --> sv["StateView — the only window<br/>copied scalars + engine-side helpers<br/>predators_within · nearest_food_dist · cell"]
     sv --> planf["plan s → policy<br/>sandboxed Lua 5.4 · microseconds · instruction-limited"]
     planf <--> mem[("memory<br/>plain data · persists between calls · saved with the state")]
-    planf --> check{"schema + bounds check"}
-    check -->|"out of bounds / error / looping"| keep["discard · previous policy keeps running"]
+    planf --> check{"normalize goals · schema + bounds check"}
+    check -->|"out of bounds / error / interrupted"| keep["misfire: previous policy this cycle<br/>plan_errors_to_fail in a row → FAILED"]
     check -->|ok| policy["policy<br/>ranking weights · guard distribution · night policy<br/>build plan · pave threshold · capacity margin"]
     policy --> board["task board — tactics, every N_plan ticks<br/>gather → build tasks → rank → assign greedily by distance field"]
     board --> agents["one task per myrmek"]
@@ -291,11 +304,11 @@ flowchart TB
     planf -.->|"request_revision"| ladder
 ```
 
-The strategic and tactical levels run on completely different clocks: `plan()` is microseconds every `N_plan` ticks, while the model is called rarely and never blocks a tick.
+Read it top to bottom: state is condensed into the `StateView`, the sandboxed `plan()` turns it into a policy, validation lets that policy through or keeps the previous one, and the task board turns policy into per-myrmek tasks. The right-hand side is the judgment loop: declared coverage and the day's outcomes meet in the dawn scorecard, a failing verdict falls into the escalation ladder, and the situation's demand — not the strategy's own opinion — decides which candidate the ladder promotes next. The two levels run on different clocks: `plan()` is microseconds every `N_plan` ticks, while the model is called rarely and never blocks a tick. In the v0 prototype the right-hand judgment loop does not exist yet — the diagram collapses to the left column plus the `BUILTIN` fallback (§What v0 implements).
 
-- **`StateView`** is the only window: simple values copied into a dictionary (day phase, population by role, deaths by cause, storages, queen energy, known food/patches/predators with distances, frontier size, capacity vs population, gap status) plus engine-side helpers (`predators_within(r)`, `nearest_food_dist()`, `patch_reserve(id)`, `cell(x, y)`). The `World` object is never passed.
+- **`StateView`** is the only window: simple values copied into a dictionary (day phase, population by role, deaths by cause, storages, queen energy, known food/patches/predators with distances, frontier size, capacity vs population, gap status, and the current **situation with its demand vector**) plus engine-side helpers (`predators_within(r)`, `nearest_food_dist()`, `patch_reserve(id)`, `cell(x, y)`, and `s.rand()` from the `strategy` RNG stream). The `World` object is never passed.
 - **Policy** comes back as a table — ranking weights, guard distribution, night policy, build plan, paving threshold, capacity margin, `request_revision`, and (from v2) the desired role mix — converted to a `Dictionary` and checked against a schema and value bounds.
-- **`StrategyRunner`** hides the execution environment. From the first prototype (v0.5) the runner is **Lua 5.4 via godot-luaAPI**: a real sandbox — only `base`/`table`/`string`/`math` are bound, so `os`, `io`, `require`, `load` and the engine simply do not exist for a strategy — with an instruction-counter hook that interrupts a looping `plan()` and protected calls for errors. `memory` is plain data only (it is saved with the state). There is no GDScript runner; the seam stays so the environment could be swapped without touching the rest of the code.
+- **`StrategyRunner`** hides the execution environment. From the first prototype (v0.5) the runner is **Lua 5.4 via godot-luaAPI**: a real sandbox — only `base`/`table`/`string`/`math` are bound, so `os`, `io`, `require`, `load` and the engine simply do not exist for a strategy — with an instruction-counter hook that interrupts a looping `plan()` and protected calls for errors. Two determinism rules ride the seam. First, **`math.random` and `math.randomseed` are removed from the binding**: Lua 5.4 seeds its own generator unpredictably at state creation, which would quietly break bit-identical replay — a strategy that wants noise calls **`s.rand()`**, drawn from the named `strategy` stream like every other journaled draw. Second, **everything list-shaped in `StateView` arrives as a Lua sequence** traversed with `ipairs`; no API table has meaningful `pairs` order, and the contract test feeds `plan()` a permuted copy of the same state and requires the identical policy back. `memory` is plain data only (it is saved with the state). There is no GDScript runner; the seam stays so the environment could be swapped without touching the rest of the code.
 
 **Who writes the program — `queen_brain`:**
 
@@ -303,12 +316,14 @@ The strategic and tactical levels run on completely different clocks: `plan()` i
 |---|---|---|
 | `BUILTIN` | **No program at all** — the queen's own algorithm: default policy + the hardcoded plans, assigning every myrmek directly | Never; this is the zero point every program is measured against |
 | `PROGRAM` | A hand-written Lua program from `res://strategies/` or the user's library | Never by itself; swapped or edited by the person, reloaded on the fly |
-| `LLM` | The model writes a program at start and revises it by results | On events (first night, predator inside, mass deaths, empty storage), on `request_revision`, at most once per `N_revision` |
+| `LLM` | The model writes a program at start and revises it by results | v0: the first night, more than three deaths since dawn, `request_revision`. From v1.5: also a failing scorecard once the library budget is spent (the ladder). Always at most once per `N_revision` |
 | `LEARNED` (v6) | A small NN tunes a program's parameters / picks one from the library; asks the LLM at low confidence | Every planning cycle |
 
 `BUILTIN` is also the **fallback**, reached without ceremony: no API key, every candidate version rejected, a strategy file that will not load — the nest keeps playing on its own algorithm and says so in the queen panel. Nothing in the simulation depends on a program existing.
 
-**The shipped strategies.** A handful of hand-written Lua programs live in `res://strategies/` from v0.5 — they are the `PROGRAM` mode's content, the arena's opponents, and what the `MOCK` provider serves in tests. Each is expressible in the six prototype policy fields, so each is a few dozen readable lines with a clearly different idea: `baseline.lua` (the default balanced policy, the `PROGRAM` default), `fortress.lua` (guards massed at the gaps, always seal, a tight ring, short trips), `forager.lua` (food weighted heavily, fewer guards, a bigger harvest share), `growth.lua` (a wider ring early, build priority over food once the store is safe). The first thing the arena answers is whether any of them — or anything Gemini writes — actually beats `BUILTIN`.
+**The shipped strategies.** Hand-written Lua programs in `res://strategies/` — the `PROGRAM` mode's content, the arena's opponents, and what the `MOCK` provider serves in tests. **v0.5 ships exactly one, `baseline.lua`** (the balanced default): the prototype has nothing to select between and deliberately no selector. `fortress.lua` (guards massed at the gaps, always seal, a tight ring), `forager.lua` (food weighted heavily, fewer guards, a bigger harvest share) and `growth.lua` (a wider ring early, build priority once the store is safe) join in v1.5, together with the library and the judging apparatus below. Each is a few dozen readable lines within the six prototype policy fields, and the first thing the arena answers is whether any of them — or anything Gemini writes — actually beats `BUILTIN`.
+
+**Scope note: everything from here to the arena is v1.5, not the prototype.** Situations and demand vectors, coverage goals, the scorecard, the escalation ladder with its budget, fingerprints and ledger — all of it arrives in v1.5, once there is a library worth choosing from. **v0 runs one strategy and no selection or evaluation algorithm at all:** `baseline.lua` or whatever the model writes, validated before apply; a broken version is rejected and the current keeps running; `plan_errors_to_fail` misfires in a row, or nothing loading at all, drops the nest to `BUILTIN`; the model is asked to revise on three plain triggers (the first night, more than three deaths since dawn, `request_revision`). That is the entire v0 story — the machinery below is what replaces those plain triggers when the library grows.
 
 **Who decides what the nest needs *now*.** A strategy declaring its own goals only answers half the question; the other half is which goals matter at this moment, and that is **the engine's call, not the strategy's and not the model's**. Every cycle `strategy_eval.gd` classifies the nest's **situation** from the same numbers the task board already has — a pure function of state, so it is deterministic and testable:
 
@@ -368,7 +383,7 @@ The six numbers are therefore the shared language of the whole mechanism: the en
 
 **Coverage sets the bar the strategy is held to; floors are not negotiable.** For each goal the expected value is `floor + coverage[g] × (target − floor)`: claim 0.45 of `food` and you are judged near the ambition target on food; claim 0.00 of `territory` and an unexplored day is not held against you. What coverage can never do is lower a **floor** — the population halving, a starved queen, a store empty for a day, capacity under population past its grace — those are failures at any coverage, which is why `fortress.lua` declaring `queen` 0.10 still cannot let the queen starve.
 
-**The scorecard.** At every dawn `strategy_eval.gd` measures the six indicators over the past day, compares each against its coverage-derived expectation, and produces a `Scorecard` (§Contracts) with a verdict weighted by the **current situation's demand**: **healthy** (every demanded goal met), **warning** (a goal missed that this situation weights lightly), **failing** (a floor breached, a heavily demanded goal missed, or two consecutive `warning` days). So the same miss is read differently depending on what the nest actually needed — missing `territory` during a `FAMINE` is noise; missing `food` is the whole problem. Floors are checked immediately, not only at dawn, so a collapse does not get a full day to finish. A freshly promoted version gets `probation_days` (default 1) of grace on everything but the floors. Every scorecard is journaled, and those journaled scorecards are exactly what the LLM's revision prompt and the arena's ranking read, so "good" has one definition across the live game, the arena and the model.
+**The scorecard.** At every dawn `strategy_eval.gd` measures the six indicators over the past day, compares each against its coverage-derived expectation, and produces a `Scorecard` (§Contracts) with a verdict weighted by the **current situation's demand**: **healthy** (every demanded goal met), **warning** (a goal missed that this situation weights lightly), **failing** (a floor breached, a heavily demanded goal missed, or two consecutive `warning` days). So the same miss is read differently depending on what the nest actually needed — missing `territory` during a `FAMINE` is noise; missing `food` is the whole problem. Floors are checked immediately, not only at dawn, so a collapse does not get a full day to finish. A misfiring `plan()` — a runtime error or the instruction limit — keeps the previous policy for that cycle; **`plan_errors_to_fail` consecutive misfires (default 3) count as a floor breach** and send the version down the ladder. A freshly promoted version gets `probation_days` (default 1) of grace on everything but the floors. Every scorecard is journaled, and those journaled scorecards are exactly what the LLM's revision prompt and the arena's ranking read, so "good" has one definition across the live game, the arena and the model.
 
 **The escalation ladder.** On a `failing` verdict the queen does not keep hoping:
 
@@ -412,7 +427,8 @@ In order: **demote to `BUILTIN` immediately** (the queen's own algorithm is neve
 - **Everything is measured in ticks and days, never wall-clock.** A real-time window would make the same seed decide differently at 1x and 16x, which would break replay; sim-days and attempt counts keep the ladder deterministic.
 
 **What the model is told.** When the ladder reaches the LLM it does not ask in the abstract — `nest_report.gd` assembles a **dossier of the failures**: the full source of every program that failed in this crisis, each with its scorecards (declared goal versus actual, per day), which floors were breached and when, the blacklist with reasons including anything skipped as a sibling, and — as the reference line — what `BUILTIN` achieved over the same days. The instruction that accompanies it is explicit: these ideas have been tried and these are their numbers, do not send an equivalent back. And that instruction is *enforced*, not merely requested: a returned program whose fingerprint is a sibling of a blacklisted one is rejected by validation as a rehash, exactly as a program that fails its bounds check would be.
-**The LLM loop:** the model receives the language description, the `StateView`/policy API, the goal, and the situation → returns a program; on revision it also gets the current program, metrics since the last revision, and a log of which branches fired → returns a new version plus a change note. Every version passes validation — compile, static check or sandbox, policy bounds, a dry run on recorded states from the last day — or is discarded while the previous version keeps running. Calls are asynchronous (`HTTPRequest`); the simulation never waits; a minimum real-time interval prevents request storms at 16x. Every accepted version is journaled with its tick, so saves and replays reproduce LLM runs without new calls. **The model never controls an individual myrmek.**
+
+**The LLM loop:** at the start of a run the model receives the language description, the `StateView`/policy/goals API, the six goals and the current situation, and returns a program; a revision receives the failure dossier above — or, outside a crisis, the current program with its scorecards and the log of which branches fired — and returns a new version plus a change note. Every version passes validation — compile, the sandbox, policy **and goals** bounds, the fingerprint check against the blacklist, and a dry run on recorded states from the last day — or is discarded, and the nest stays where the ladder left it (`BUILTIN` during a crisis, the current program otherwise). Calls are asynchronous (`HTTPRequest`); the simulation never waits; a minimum real-time interval prevents request storms at 16x. Every accepted version is journaled with its tick, so saves and replays reproduce LLM runs without new calls. **The model never controls an individual myrmek.**
 
 ```mermaid
 sequenceDiagram
@@ -435,6 +451,8 @@ sequenceDiagram
     Note over Sim,Prov: a minimum real-time interval prevents request storms at 16x ·<br/>the journal replays the run later with no new calls
 ```
 
+The point of the sequence is what the simulation does while the request is out: it keeps ticking on whatever the ladder left active, because the call is asynchronous and an answer enters only at a tick boundary — after compilation, the sandbox, the bounds checks, the dry run and the fingerprint comparison against the blacklist. The journal line at the bottom is what makes an LLM run replayable without the LLM.
+
 **Strategy library:** programs are files (`user://strategies/`) with names, versions, and revision history; any can be loaded as `PROGRAM` or raced headless on identical seeds — the arena.
 
 **The arena** runs the matrix of *strategies × seeds* **sequentially in a single headless process** (`res://tools/run_arena.gd`). One process is the deliberate choice: each cell of the matrix gets its own fresh world from its own seed, nothing is shared, and the whole matrix is therefore reproducible by construction — re-running the same strategy list and seed list yields the same table, which is the only thing that makes "strategy A beats strategy B" a claim rather than an impression. Each run writes one results table under `user://arena/<run_id>/` — per cell: survival, days reached, deaths by cause, food collected, capacity growth, ticks elapsed — plus a summary ranking. Parallel worker processes are a later optimization, admissible precisely because the cells are already independent and individually seeded; they must never share simulation state, and a parallel run must reproduce the sequential table.
@@ -444,8 +462,8 @@ sequenceDiagram
 The stable seams. Changing a contract must change its contract test (§Testing).
 
 - **Tick phase order** — the seven phases above, exactly.
-- **`StateView`**: the scalar dictionary + helper functions; identical for GDScript, Lua, and the API description sent to the LLM. Grows additively.
-- **Policy table**: field set, types, and bounds; validated before use.
+- **`StateView`**: the scalar dictionary + helper functions; identical for the Lua runner and the API description sent to the LLM. Grows additively.
+- **Policy table**: field set, types, and bounds, held in `policy_schema.gd` — the single source from which the validation and the LLM's API description are both generated, so the two cannot drift apart.
 - **`StrategyRunner`**: `load(source) -> ok|error`, `plan(state_view) -> policy`, persistent `memory`, execution limits.
 - **Task**: `{type, target, priority, assignee}` and its lifecycle (created → assigned → done/cancelled).
 - **LLM provider**: async `request_program(context) -> {program_source, change_note}`; `MOCK` serves a file.
@@ -476,19 +494,19 @@ At 2048x2048: terrain 4 MB + structures 4 MB + knowledge 4 MB and distance field
 
 ## Saves
 
-Since the sim is pure data, saving is serialization: format version, seed and parameters, clock, layer arrays, sparse object/agent dictionaries, nest state (storages, task board, build plan/queue, frontier), strategy program + journal + `memory`, RNG stream states — `var_to_bytes` into a compressed file (`FileAccess.open_compressed`) beside a small JSON header (version, seed, day, population, date) for slot lists. The body carries **plain types only** — numbers, strings, arrays, dictionaries, packed arrays — and is read back with `bytes_to_var`, **never `bytes_to_var_with_objects`**: a save file can therefore never instantiate a class or execute code, which matters from v4 where saves live on a server and a file of unknown origin can arrive. A contract test asserts the round trip stays object-free. **Saving is automatic**: every dawn (`autosave_ticks` 1120), on exit, and before applying a new strategy version; the last 3 autosaves plus one per simulation day are kept; launch resumes from the latest autosave — "new world" is a deliberate action. Writes run on a background thread from array copies, to a temp name renamed on success, so a crash never corrupts the previous save. Loading rebuilds the render, minimap, and distance field. Backward compatibility across format versions is not guaranteed before v4 (saves move server-side there).
+Since the sim is pure data, saving is serialization: format version, seed and parameters, clock, layer arrays, sparse object/agent dictionaries, nest state (storages, task board, build plan/queue, frontier), the whole strategy state (active mode and program, `memory`, the version journal, and from v1.5 the scorecards, the attempt ledger and the situation with `since_tick` and any observer pin), RNG stream states — `var_to_bytes` into a compressed file (`FileAccess.open_compressed`) beside a small JSON header (version, seed, day, population, date) for slot lists. The body carries **plain types only** — numbers, strings, arrays, dictionaries, packed arrays — and is read back with `bytes_to_var`, **never `bytes_to_var_with_objects`**: a save file can therefore never instantiate a class or execute code, which matters from v4 where saves live on a server and a file of unknown origin can arrive. A contract test asserts the round trip stays object-free. **Saving is automatic**: every dawn (`autosave_ticks` 1120), on exit, and before applying a new strategy version; the last 3 autosaves plus one per simulation day are kept; launch resumes from the latest autosave — "new world" is a deliberate action. Writes run on a background thread from array copies, to a temp name renamed on success, so a crash never corrupts the previous save. Loading rebuilds the render, minimap, and distance field. Backward compatibility across format versions is not guaranteed before v4 (saves move server-side there).
 
 ## Error handling and resilience
 
-- **Strategy versions** that fail any validation step are discarded; the previous program keeps running. A `plan()` that loops is interrupted by the Lua instruction limit and treated as a failed version.
+- **A candidate version** that fails any validation step — compile, sandbox, bounds, dry run, fingerprint — is simply never promoted; whatever was running keeps running. **The active program** failing is a different path: a misfiring `plan()` (runtime error, or interrupted by the instruction limit) keeps the previous policy for that cycle, and `plan_errors_to_fail` misfires in a row drop the nest to `BUILTIN` — directly in v0, via the escalation ladder from v1.5 (§The queen's brain).
 - **LLM failures** (timeout, API error, malformed program) never stall the tick loop — calls are async and the current program continues; the minimum-interval guard holds at high speed.
 - **Pathfinding**: an unreachable or vanished target cancels the task; blocked next-cells trigger replanning; scouts fall back to random walk.
 - **Saves** are atomic (temp + rename) and off-thread; a failed save is logged and retried at the next trigger, never crashing the sim.
 
 ## Security
 
-- Strategies run sandboxed from the first prototype: Lua 5.4 with only `base`/`table`/`string`/`math` bound (no `os`/`io`/`require`/`load`/engine access) and an instruction counter. Every new version additionally passes schema/bounds validation and a dry run on recorded states. On the server (v4), where foreign strategies may appear, the same sandbox is the outer wall.
-- LLM keys live in a **gitignored `.env` at the project root**; a committed `.env.example` documents the variable names and nothing else. Godot does not read `.env` itself, so a small loader in the app/server layer parses it into the process environment at startup — real environment variables always take precedence, which is how the v4 server supplies them (systemd `EnvironmentFile=`) without a second mechanism. The file is never committed, never bundled into an export, and never logged; a missing key degrades to `PROGRAM` mode with a plain message, never a crash, and tests use `MOCK` and need no key at all.
+- Strategies run sandboxed from the first prototype: Lua 5.4 with only `base`/`table`/`string`/`math` bound (no `os`/`io`/`require`/`load`/engine access, no `math.random` — `s.rand()` serves the `strategy` stream instead) and an instruction counter. Every new version additionally passes schema/bounds validation and a dry run on recorded states. On the server (v4), where foreign strategies may appear, the same sandbox is the outer wall.
+- LLM keys live in a **gitignored `.env` at the project root**; a committed `.env.example` documents the variable names and nothing else. Godot does not read `.env` itself, so a small loader in the app/server layer parses it into the process environment at startup — real environment variables always take precedence, which is how the v4 server supplies them (systemd `EnvironmentFile=`) without a second mechanism. The file is never committed, never bundled into an export, and never logged; a missing key parks `LLM` mode and drops the nest onto the fallback chain — the best-fit shipped strategy, else `BUILTIN` (§The queen's brain) — with a plain message, never a crash, and tests use `MOCK` and need no key at all.
 - Server access (v4): one shared token for all clients, TLS (`wss://`) terminated by Caddy/nginx, external access via tunnel or VPN. No accounts.
 
 ## Observability
@@ -500,7 +518,7 @@ Since the sim is pure data, saving is serialization: format version, seed and pa
 
 ## Configuration
 
-Defaults are data (`res://data/*.tres` — `roles.tres`, `predators.tres`, `sim_params.tres`), edited live from the parameters panel. Key defaults: world 2048x2048; chunk 64; water/rock 12%/10%; 40 patches (10–60 units); 60 starting food items; active radius 200; 10 ticks/s; day 600/60/400/60; `N_plan` 10; roles 15/20/15/30/20; food reserve 20; `seal_at_night` on; `T_food` 200 / `p_food` 0.3; `T_res` 3000; predators 3/2/2 on a 60–150 ring; `queen_brain` `PROGRAM` with `baseline.lua` (`BUILTIN` before v0.5 exists, and as the fallback); `N_revision` 1120; LLM min interval 60 s; provider Gemini 3.1 Pro (`MOCK` in tests); `build_time` 10; `demolish_time` 5; `pave_speed` 2; `pave_traffic` 30/day; `autosave_ticks` 1120. The six goals with their floors and ambition targets, the per-situation demand vectors, and the shipped strategies' coverage vectors all live in `sim_params.tres`. Scorecard defaults: `probation_days` 1, `capacity_grace` 3 days, `warning_days_to_fail` 2, `library_attempts` 2 per crisis, `situation_hysteresis` 1 day, `similarity_eps` 0.1 (normalized policy distance), `blacklist_days` = the whole run in v0 and 5 sim-days from v1.5; floors — population halving in a day, a starved queen, a food store empty for a whole day.
+Defaults are data (`res://data/*.tres` — `roles.tres`, `predators.tres`, `sim_params.tres`), edited live from the parameters panel. Key defaults: world 2048x2048; chunk 64; water/rock 12%/10%; 40 patches (10–60 units); 60 starting food items; active radius 200; 10 ticks/s; day 600/60/400/60; `N_plan` 10; roles 15/20/15/30/20; food reserve 20; `seal_at_night` on; `T_food` 200 / `p_food` 0.3; `T_res` 3000; predators 3/2/2 on a 60–150 ring; `queen_brain` `PROGRAM` with `baseline.lua` (`BUILTIN` before v0.5 exists, and as the fallback); `N_revision` 1120; LLM min interval 60 s; provider Gemini 3.1 Pro (`MOCK` in tests); `build_time` 10; `demolish_time` 5; `pave_speed` 2; `pave_traffic` 30/day; `autosave_ticks` 1120. `plan_errors_to_fail` 3 applies from v0 — that many misfires in a row drop the nest to `BUILTIN`. The judging data and defaults are v1.5: the six goals with their floors and ambition targets, the per-situation demand vectors and the coverage vectors in `sim_params.tres`; `probation_days` 1, `capacity_grace` 3 days, `warning_days_to_fail` 2, `library_attempts` 2 per crisis, `situation_hysteresis` 1 day, `similarity_eps` 0.1 (normalized policy distance), `blacklist_days` 5 sim-days; floors — population halving in a day, a starved queen, a food store empty for a whole day, capacity below population beyond `capacity_grace`.
 
 ## Tech stack
 
@@ -508,7 +526,7 @@ Defaults are data (`res://data/*.tres` — `roles.tres`, `predators.tres`, `sim_
 |---|---|---|
 | Engine | **Godot 4.x (4.3+)** | 2D cellular world, one project exporting to macOS (v1), headless Linux + web (v4). Version pinned in `project.godot`; hot paths can move to GDExtension later if profiling demands it |
 | Language | **GDScript** | Everything but strategies. Fast to write, one language across sim/view/UI; the sim uses typed arrays and avoids per-tick allocation |
-| Strategy runtime | **Lua 5.4 via godot-luaAPI** (GDExtension, from v0.5) | The only sandbox that holds: `base`/`table`/`string`/`math` bound, no `os`/`io`/`require`/`load`/engine, instruction-counter hook. Vendored in `res://addons/luaAPI/`, its version **pinned together with the Godot version** (it ships per-engine binaries); behind `StrategyRunner` so it stays swappable |
+| Strategy runtime | **Lua 5.4 via godot-luaAPI** (GDExtension, from v0.5) | The only sandbox that holds: `base`/`table`/`string`/`math` bound (minus `math.random` — strategies draw noise via `s.rand()`), no `os`/`io`/`require`/`load`/engine, instruction-counter hook. Vendored in `res://addons/luaAPI/`, its version **pinned together with the Godot version** (it ships per-engine binaries); behind `StrategyRunner` so it stays swappable |
 | Sim data | `PackedByteArray` / `PackedInt32Array` layers + sparse `Dictionary` | Layer arrays for terrain/structures/knowledge, sparse maps for objects/agents, `PackedInt32Array` distance field. Integer-only arithmetic (fixed-point energy) — §Determinism and replay |
 | Randomness | `RandomNumberGenerator`, named streams | worldgen · spawner · combat · strategy · interventions, each derived from the master seed (`rng.gd`) |
 | Pathfinding | Hand-written weighted BFS + `AStarGrid2D` | Distance field for the global case, engine A* on a bounded rectangle for the local one — §Pathfinding |
@@ -543,7 +561,8 @@ res://sim/           pure simulation — no Node, no scene tree, no network
   queen_policy.gd    BUILTIN / PROGRAM / LLM modes, version validation, dry run, library
   strategy_eval.gd   situation classifier, declared goals vs actuals, the dawn
                      scorecard, candidate fit scoring, the escalation ladder
-  nest_report.gd     the report for the LLM (state, metrics, fired branches)
+  nest_report.gd     the LLM report and the failure dossier (state, metrics, fired
+                     branches, failed sources with their scorecards)
   pathfinding.gd     distance field + local A*
   combat.gd          adjacency damage, deaths, carcasses, cargo drops
   spawner.gd         food, resource regeneration, predators (active zone only)
@@ -574,13 +593,14 @@ codegen/             the run tracker and its dashboard
 
 ## Testing
 
-Every roadmap phase ships with the tests that encode its DoD; all sim tests run headless.
+Every roadmap phase ships with the tests that encode its DoD; all sim tests run headless. CI (`.github/workflows/ci.yml`) runs `scripts/test.sh` on every push and pull request; the slow batches — the balance smoke and the arena — run nightly.
 
 - **Unit**: worldgen guarantees, energy math, state machines, flood-fill interior/capacity, frontier maintenance, distance-field weights, traffic → `PAVE` queue, night multipliers, task ranking.
-- **Contract**: `StateView` shape and helpers, policy schema/bounds, `StrategyRunner` behaviour (the Lua runner against golden `StateView` fixtures), task shape and lifecycle, save round-trip, tick phase order. Changing a contract changes its test.
+- **Contract**: `StateView` shape and helpers, policy schema/bounds, `StrategyRunner` behaviour (the Lua runner against golden `StateView` fixtures), task shape and lifecycle, save round-trip, tick phase order, and the judging shapes — `Situation`, `Goal coverage`, `Scorecard`, `Fingerprint`, the attempt ledger. Changing a contract changes its test.
 - **Determinism**: same seed → identical state hash after N ticks; save/load → bit-identical continuation; replay from journal matches the original run.
-- **Strategy safety**: sandbox escapes blocked, the instruction limit fires on a looping `plan()`, malformed/out-of-bounds policies rejected, a failed version leaves the previous one running.
-- **Balance smoke**: headless seed batches — without the LLM the nest survives the first night in ≥50% of seeds.
+- **Strategy safety**: sandbox escapes blocked, the instruction limit fires on a looping `plan()`, malformed/out-of-bounds policies rejected, a rejected candidate leaves the running state untouched.
+- **Strategy judging (v1.5)**: coverage normalization (a vector of ones becomes six equal sixths); the fit dot product picks `forager` in a famine and `fortress` in a siege straight from the shipped tables; situation classification on fixture states, with hysteresis suppressing a one-day flip and an observer pin overriding the classifier; scorecard verdicts on fixture days, a laxer-than-floor claim clamped; siblings skipped without consuming budget; a rehashed answer rejected by fingerprint; the attempt ledger surviving save/load; identical policies from permuted state tables and across reruns that use `s.rand()`.
+- **Balance smoke**: headless seed batches — on `BUILTIN` alone, no program and no model, the nest survives the first night in ≥50% of seeds.
 - **LLM**: `MOCK` provider only in tests — no paid calls; the full report → program → validation → apply loop against canned programs, including deliberately broken ones.
 
 ## Open questions
@@ -592,6 +612,10 @@ Decisions still open, each with the current recommendation. When one is settled,
 ---
 
 ## History of changes
+
+**v1.15 (27.09.2026)** — the prototype de-complicated on purpose: **v0 runs exactly one shipped strategy (`baseline.lua`) and no selection or evaluation algorithm**. A scope note in The queen's brain marks everything from situations to the arena as v1.5; the v0 table, the `LLM` mode triggers (back to the three plain ones for v0), the shipped-strategies paragraph (the `fortress`/`forager`/`growth` trio moves to v1.5), Error handling, Saves, Configuration and Testing were version-marked to match. The one v0 safety valve kept: `plan_errors_to_fail` misfires in a row drop the nest to `BUILTIN` directly. The brain-diagram caption now says the right-hand judgment loop collapses away in v0.
+
+**v1.14 (27.09.2026)** — a consistency pass over the seams left by v1.8–v1.13, plus two determinism holes closed: `math.random`/`math.randomseed` are removed from the Lua binding (Lua self-seeds unpredictably) in favour of `s.rand()` from the `strategy` stream, and `StateView` lists are pinned as `ipairs` sequences with a permutation contract test — both also added to Security, the Tech stack and Testing. A misfiring `plan()` now escalates: previous policy for the cycle, `plan_errors_to_fail` (3) consecutive misfires = a floor breach. Reconciled the pre-ladder leftovers: Error handling separates a rejected candidate from a failing active program, the LLM-loop paragraph loses the GDScript-era "static check", gains the goals bounds and fingerprint step and no longer claims "the previous version keeps running", the `LLM` mode row's triggers match the sequence diagram, the v0 table's LLM row drops the ">3 deaths" trigger and its strategic row gains the situation classifier, Security's missing-key path now ends in the fallback chain rather than `PROGRAM`, Saves now serializes the attempt ledger, scorecards, situation and active mode it had promised to keep, Configuration gains the fourth floor and `plan_errors_to_fail`, Contracts fixes the GDScript mention and names `policy_schema.gd` as the single policy source, `StateView` lists the situation and `s.rand()`, and Testing gains the CI line, the judging-shape contracts and a **Strategy judging** bullet. Every diagram now carries a short textual explanation directly beneath it, and the brain diagram's validation and misfire nodes were redrawn to match.
 
 **v1.13 (27.09.2026)** — made explicit who authors the current goal vector, since that vector is what selects the strategy: the engine by default (one of five authored demand vectors, pure function of state with hysteresis), the observer by pinning a situation or setting the six numbers directly (a journaled tick-boundary command), and the model never — the demand is the question, a program is the answer, and a model setting both would grade its own homework. Noted that blending adjacent situations is an additive v1.5 refinement.
 

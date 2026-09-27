@@ -1,6 +1,6 @@
 # Roadmap — Myrmex
 
-Document version 1.5 — 27 September 2026.
+Document version 1.6 — 27 September 2026.
 
 Seven versions, built in order: **v0** prototype "First Night" (headless core, three roles, the spider, sandboxed Lua strategies, the Gemini loop) → **v1** the full nest (big world, six roles, three predators, paving, the full StateView, the arena, full UI) → **v2** births → **v3** replay → **v4** server and clients → **v5** nests at war → **v6** evolution and the genome. Versions are numbered from 0; phases inside a version are numbered `vA.B`. Each phase lists a **Goal**, a short description, a **Tasks** list, and a **Definition of Done (DoD)**, and ships with the automated tests that encode its DoD (see [ARCHITECTURE.md](ARCHITECTURE.md) §Testing).
 
@@ -81,27 +81,24 @@ Agents arrive: worker/builder/guard state machines, the queen's tactical task bo
 
 ### v0.5 — The strategy program and the LLM loop
 
-**Goal:** the queen's policy becomes a sandboxed Lua program; Gemini writes and revises it.
+**Goal:** the queen's policy becomes a sandboxed Lua program; Gemini writes and revises it. **One strategy, no judging machinery — deliberately.**
 
-The strategic level over the task board: Lua 5.4 strategies via godot-luaAPI behind `StrategyRunner`, the tiny `StateView`, validation, the version journal, and the `PROGRAM`/`LLM` modes with Gemini 3.1 Pro and `MOCK`.
+The strategic level over the task board: Lua 5.4 strategies via godot-luaAPI behind `StrategyRunner`, the tiny `StateView`, validation, the version journal, and the `BUILTIN`/`PROGRAM`/`LLM` modes with Gemini 3.1 Pro and `MOCK`. The prototype runs **a single strategy at a time with no selection or evaluation algorithm**: the six-goal coverage, situations, the scorecard and the escalation ladder all arrive in v1.5, once there is a library worth choosing from.
 
 **Tasks:**
 - The godot-luaAPI addon, its version pinned together with the Godot version.
-- `StrategyRunner` with the Lua 5.4 runner: only `base`/`table`/`string`/`math` bound (no `os`/`io`/`require`/`load`, nothing from the engine), an instruction-counter hook that interrupts a looping `plan()`, protected calls, table conversion both ways; `memory` persists between calls (plain data only — it is saved with the state).
+- `StrategyRunner` with the Lua 5.4 runner: only `base`/`table`/`string`/`math` bound (no `os`/`io`/`require`/`load`, nothing from the engine), an instruction-counter hook that interrupts a looping `plan()`, protected calls, table conversion both ways; `math.random` removed in favour of `s.rand()` from the `strategy` stream, `StateView` lists as `ipairs` sequences; `memory` persists between calls (plain data only — it is saved with the state).
 - Tiny `StateView` (~10 scalars: phase, population, deaths since dawn, food store, nearest food, predators within radius, ring closed, capacity vs population, gap status) + 6 policy fields (food-vs-build weight, guards-at-gaps share, seal at night, ring radius, workers-on-resource share, build priority); schema and bounds validation.
-- Safety: the sandbox + instruction limit, policy bounds, and a dry run on recorded states; a failed or interrupted version is discarded, the previous keeps running.
-- `PROGRAM` mode with strategy files, and **the shipped starter set** in `res://strategies/` — several hand-written Lua programs, each a few dozen lines expressing a different idea within the six policy fields: `baseline.lua` (the `PROGRAM` default), `fortress.lua` (guards at the gaps, always seal, tight ring), `forager.lua` (food-weighted, fewer guards), `growth.lua` (wider ring early). They are also the `MOCK` provider's input and the arena's first opponents.
-- **The situation classifier** (`strategy_eval.gd`): `FOUNDING` / `SIEGE` / `FAMINE` / `STABLE` derived from state as a pure function with `situation_hysteresis` before a change takes effect, exposed as `s.situation` in the `StateView` and used to score which candidate fits; the observer can pin one from the queen panel as a journaled command. (`CROWDED` joins in v1.4, when capacity planning arrives.)
-- **The six goals, coverage and the dawn scorecard** (`strategy_eval.gd`): the closed goal list (`survival`, `food`, `shelter`, `capacity`, `territory`, `queen`) with each goal's indicator, floor and ambition target in `sim_params.tres`; every program exports a `goals` coverage vector (0..1 each, normalized to sum to 1) which sets its expectation per goal as `floor + coverage × (target − floor)`; fit against a situation is the dot product of demand and coverage. At every dawn actuals are scored into a journaled `Scorecard` whose verdict is weighted by the current demand (healthy / warning / failing), with the engine's floors — population halving, a starved queen, a day with an empty store — checked immediately and impossible to declare away. `probation_days` grace for a fresh version.
-- **The escalation ladder, minimal form:** a `failing` verdict demotes to `BUILTIN` at once, blacklists that version, and promotes the best-fit eligible starter strategy (untried this crisis, not a fingerprint sibling of the failure, declared goals closest to the current situation's demand) within a budget of `library_attempts`; once spent, the LLM is asked with the **failure dossier** (every failed source, its scorecards, the floors breached, and `BUILTIN`'s numbers over the same days) and a returned rehash is rejected by fingerprint. `BUILTIN` plays throughout; the attempt ledger is journaled, so a save/load and a replay make the same choices.
-- `BUILTIN` stays selectable and is the fallback: no key, an unloadable file, or every candidate version rejected → the nest plays on its own algorithm and the queen panel says so.
+- Safety: the sandbox + instruction limit, policy bounds, and a dry run on recorded states; a failed or interrupted candidate is rejected, the current keeps running; `plan_errors_to_fail` (3) misfires in a row drop the nest to `BUILTIN`.
+- `PROGRAM` mode with **one shipped strategy** — `baseline.lua`, a few dozen readable lines within the six policy fields; it is also the `MOCK` provider's input. (`fortress`, `forager` and `growth` join in v1.5, with the library and the arena.)
+- **No judging machinery in v0:** no goals, no scorecard, no situations, no fit, no ladder. A new version is validated (compile, sandbox, bounds, dry run); a broken one is rejected and the current keeps running; if nothing loads — or the running program keeps misfiring — the nest drops to `BUILTIN` and the queen panel says so. `BUILTIN` stays selectable on its own.
 - The version journal `{source, author_mode, tick, change_note}`; autosave before applying a new version.
 - `LLM` mode: report assembly (state + metrics + fired branches), async `HTTPRequest`, minimum real-time interval; providers Gemini 3.1 Pro and `MOCK` (program from file); revision triggers — first night, "more than three deaths since dawn", `request_revision`.
 - Queen panel: current program with fired-branch highlighting, last policy and explanation, version history.
 
-**DoD:** the concept's loop criterion — a program from Gemini arrives in under ten seconds and **visibly changes behaviour** (after losses, more guards at gaps; short on space, an earlier wider ring), and the four shipped strategies visibly differ from each other and from `BUILTIN` on the same seed; a deliberately broken version is rejected and a deliberately looping `plan()` is interrupted without stalling a tick — the nest keeps its previous strategy either way; a saved run replays with the journaled programs, no new model calls.
+**DoD:** the concept's loop criterion — a program from Gemini arrives in under ten seconds and **visibly changes behaviour** (after losses, more guards at gaps; short on space, an earlier wider ring), and `baseline.lua` visibly differs from `BUILTIN` on the same seed; a deliberately broken version is rejected and a deliberately looping `plan()` is interrupted without stalling a tick — the nest keeps its previous strategy either way; a saved run replays with the journaled programs, no new model calls.
 
-**Tests:** runner contract; sandbox escape attempts (`os`, `io`, `require`, `load`, `_G` tricks) blocked; the instruction limit fires; dry-run failure → previous version stays; policy and `goals` bounds, including a declaration laxer than a floor being clamped; situation classification from fixture states, including hysteresis suppressing a one-day flip and an observer pin overriding it; coverage normalization (a vector of ones becomes six equal sixths) and the fit dot product picking `forager` in a famine and `fortress` in a siege; a zero-coverage goal not held against a strategy while its floor still is; scorecard verdicts from fixture days; a deliberately bad strategy demoted to `BUILTIN` within a day with the nest surviving; siblings skipped without consuming budget and a rehashed answer rejected by fingerprint; the attempt ledger surviving save/load; `MOCK` end-to-end (dossier → program → apply); journal replay determinism. No paid calls in tests.
+**Tests:** runner contract; sandbox escape attempts (`os`, `io`, `require`, `load`, `_G` tricks) blocked; the instruction limit fires; identical policies from permuted state tables and across reruns that use `s.rand()`; dry-run failure → the current version stays; policy bounds; three consecutive misfires drop the nest to `BUILTIN`; `MOCK` end-to-end (report → program → apply); journal replay determinism. No paid calls in tests.
 
 ### v0.6 — Inspector, interventions, event log
 
@@ -172,13 +169,16 @@ Scale the prototype to the full simulation: the big chunked world with an active
 
 **Tests:** traffic decay and thresholding; pave queue ordering; field weights; no predator speedup.
 
-### v1.5 — The full StateView, the library, and the arena
+### v1.5 — Strategy judging, the library, and the arena
 
-**Goal:** the full strategy surface and comparable strategies (the sandboxed Lua runner itself ships in v0.5).
+**Goal:** strategies become judgeable and comparable — the six-goal coverage, situations, the scorecard and the full escalation ladder land here, replacing v0's three plain revision triggers (the sandboxed Lua runner itself ships in v0.5).
 
 **Tasks:**
 - The full `StateView` (ARCHITECTURE §Contracts) and the full policy schema; the LLM's API description extended to match.
-- **The full escalation ladder** over the library: candidates ranked **per situation** by arena results rather than by file order — the arena reports which program wins in a famine and which in a siege, and the ladder picks accordingly — fingerprints computed for every stored program, and blacklisting with earned rehabilitation after `blacklist_days` sim-days (a rehabilitated version re-enters on probation; a second failure blacklists it for the run).
+- **The six goals, coverage and the dawn scorecard** (`strategy_eval.gd`): the closed goal list (`survival`, `food`, `shelter`, `capacity`, `territory`, `queen`) with each goal's indicator, floor and ambition target in `sim_params.tres`; every program exports a `goals` coverage vector (0..1 each, normalized to sum to 1) setting its expectation per goal as `floor + coverage × (target − floor)`. At every dawn actuals are scored into a journaled `Scorecard` whose verdict is weighted by the current demand (healthy / warning / failing), with the engine's floors — population halving, a starved queen, a day with an empty store, capacity below population beyond `capacity_grace` — checked immediately and impossible to declare away; `probation_days` grace for a fresh version.
+- **The situation classifier** (`strategy_eval.gd`): all five situations (`FOUNDING`/`SIEGE`/`FAMINE`/`CROWDED`/`STABLE`) derived from state as a pure function with `situation_hysteresis`; the demand vectors in `sim_params.tres`; `s.situation` exposed in the `StateView`; the observer pin from the queen panel as a journaled command. Fit = the demand·coverage dot product picks candidates.
+- **The remaining shipped strategies** — `fortress.lua`, `forager.lua`, `growth.lua` — join `baseline.lua`, each with its coverage vector from the ARCHITECTURE tables.
+- **The full escalation ladder** over the library: a `failing` verdict demotes to `BUILTIN` at once and blacklists the version; the best-fit eligible candidate is promoted within a budget of `library_attempts` per crisis, siblings by **fingerprint** are skipped without consuming budget, and once the budget is spent the LLM is asked with the **failure dossier** (every failed source with its scorecards, the floors breached, `BUILTIN`'s numbers over the same days) — a returned rehash rejected by fingerprint. Candidates rank **per situation** by arena results rather than file order; blacklisting rehabilitates after `blacklist_days` sim-days (re-entry on probation, a second failure is final for the run); the attempt ledger is journaled so save/load and replay make the same choices.
 - The **scorecard becomes the arena's scoring function**, so the live game, the arena and the model all rank strategies by the same numbers; arena results are reported per situation as well as overall.
 - Strategy library (`user://strategies/`): names, versions, revision history; load as `PROGRAM`; save-to-library from the queen panel.
 - The arena (`res://tools/run_arena.gd`): the *strategies × seeds* matrix — with `BUILTIN` as the zero-point entry — run **sequentially in one headless process**, each cell a fresh world from its own seed; one results table per run under `user://arena/<run_id>/` (per cell: survival, days, deaths by cause, food, capacity growth, ticks) plus a summary ranking.
@@ -186,7 +186,7 @@ Scale the prototype to the full simulation: the big chunked world with an active
 
 **DoD:** the full `StateView` and policy surface are pinned by contract tests; the arena ranks a set of strategies on identical seeds, and re-running the same strategy list and seed list reproduces the table exactly.
 
-**Tests:** golden `StateView` fixtures → expected policies; full policy schema bounds; arena reproducibility (the same matrix twice → an identical table); provider abstraction against mocks.
+**Tests:** golden `StateView` fixtures → expected policies; full policy and `goals` bounds, a laxer-than-floor claim clamped; coverage normalization (a vector of ones becomes six equal sixths); the fit dot product picking `forager` in a famine and `fortress` in a siege; situation classification on fixture states with hysteresis and the observer pin; scorecard verdicts on fixture days, a zero-coverage goal not held against a strategy while its floor still is; a deliberately bad strategy demoted to `BUILTIN` within a day with the nest surviving; siblings skipped without consuming budget; a rehashed answer rejected by fingerprint; the attempt ledger surviving save/load; `MOCK` dossier end-to-end; arena reproducibility (the same matrix twice → an identical table); provider abstraction against mocks.
 
 ### v1.6 — The full observer surface and saves
 
@@ -354,6 +354,8 @@ Selection at both levels: bodies and strategies. Depends on: v2 (births), v5 (mu
 ---
 
 ## History of changes
+
+**v1.6 (27.09.2026)** — the prototype de-complicated by decision: v0.5 ships **one strategy (`baseline.lua`) and no judging machinery** — no goals, scorecard, situations, fit or ladder; a broken version is rejected, misfires drop to `BUILTIN`, and the model revises on the three plain triggers. The whole judging apparatus (six-goal coverage + scorecard, the situation classifier with all five situations, the full ladder with budget/fingerprints/dossier/rehabilitation, the `fortress`/`forager`/`growth` trio) moved to v1.5, retitled "Strategy judging, the library, and the arena", together with the corresponding tests.
 
 **v1.5 (27.09.2026)** — v0.5 restated around the closed six-goal list: coverage vectors normalized to sum to 1, per-goal expectations derived from coverage, fit as the demand·coverage dot product, and the scorecard verdict weighted by the current demand, with tests for normalization, fit and zero-coverage goals.
 
