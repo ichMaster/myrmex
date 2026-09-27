@@ -1,6 +1,6 @@
 # Architecture — Myrmex
 
-Document version 1.1 — 27 September 2026.
+Document version 1.2 — 27 September 2026.
 
 ## Overview
 
@@ -14,12 +14,12 @@ Two layers bound by one rule: the **simulation is pure data** — arrays and dic
 - **Agents** (`agent.gd`, `myrmek.gd`, `predator.gd`). One shared record shape; per-role and per-species state machines. See §Agents.
 - **Nest** (`nest.gd`). Knowledge mask, frontier, storages, structures, build plan and queue, interior/capacity.
 - **Queen — tactical** (`queen_ai.gd`, `tasks.gd`). The task board: gather state → build tasks → rank → assign. See §The queen's brain.
-- **Queen — strategic** (`strategy.gd`, `strategy_lua.gd`, `queen_policy.gd`, `nest_report.gd`). The `StrategyRunner` seam with GDScript (prototype) and Lua (v1.5) runners, `StateView` assembly, policy validation, the `PROGRAM`/`LLM` modes, the strategy library, and report building for the LLM.
+- **Queen — strategic** (`strategy.gd`, `strategy_lua.gd`, `queen_policy.gd`, `nest_report.gd`). The `StrategyRunner` seam with the sandboxed Lua 5.4 runner (godot-luaAPI, from v0.5), `StateView` assembly, policy validation, the `PROGRAM`/`LLM` modes, the strategy library, and report building for the LLM.
 - **LLM providers** (`res://llm/`). Gemini 3.1 Pro (main), OpenAI-compatible, Anthropic, Ollama, and `MOCK` (reads a program from a file); the `StateView`/policy API description and prompts for the model.
 - **Pathfinding** (`pathfinding.gd`). Distance field + local A*. See §Pathfinding.
 - **Combat** (`combat.gd`). Adjacent-cell damage, deaths, carcasses, cargo drops.
 - **Spawner** (`spawner.gd`). Food, resource regeneration, predator population — active zone only.
-- **RNG** (`rng.gd`). The single seeded generator every random draw goes through.
+- **RNG** (`rng.gd`). Named seeded streams (worldgen, spawner, combat, strategy, interventions), all derived from the master seed; every random draw goes through one of them.
 - **Save** (`save.gd`). Serialization, autosave, slots. See §Saves.
 - **View** (`res://view/`). Tile-window renderer, MultiMesh agents, minimap, day/night modulation. Reads state, never writes it.
 - **UI** (`res://ui/`). HUD, inspector, parameter panel, statistics, intervention tools, queen panel.
@@ -74,7 +74,7 @@ One record shape for everyone: `id`, `kind`, `type`, `nest_id`, `cell`, `hp`/`hp
 
 **State machine (all roles):** `IDLE → GO_TO → WORK → RETURN → DEPOSIT → IDLE`, with interrupts `HUNGRY` (energy < 40: asks for food, keeps working), critical (< 15: drops the task, heads home or waits for a carrier), `FLEE` (workers near a predator), `FIGHT` (guards only), `DEAD`. Adjacent nest-mates can hand cargo over.
 
-**Energy:** max 100; idle 0.01/tick; step 0.05 (+50% loaded; 0.03 on paving); attack 0.5; one food unit = +50; queen 0.1/tick, sated at ≥70; energy 0 = death. **On any death carried units drop on the cell as `FOOD`/`PILE` (lost if the cell already holds an object); an eaten or starved body disappears.**
+**Energy:** max 100; idle 0.01/tick; step 0.05 (+50% loaded; 0.03 on paving); attack 0.5; one food unit = +50; queen 0.1/tick, sated at ≥70; energy 0 = death. Energy and every other accumulated quantity are stored as **fixed-point integers** (thousandths of a unit: idle 10, step 50/75/30, attack 500, one food unit 50 000, max 100 000) — see §Determinism and replay. **On any death carried units drop on the cell as `FOOD`/`PILE` (lost if the cell already holds an object); an eaten or starved body disappears.**
 
 **Predators** (energy-driven: hungry hunts, sated wanders, starving dies; states `WANDER → HUNT → ATTACK → EAT → REST`, plus `FLEE` for fleeing species):
 
@@ -102,7 +102,7 @@ One record shape for everyone: `id`, `kind`, `type`, `nest_id`, `cell`, `hp`/`hp
 
 - **`StateView`** is the only window: simple values copied into a dictionary (day phase, population by role, deaths by cause, storages, queen energy, known food/patches/predators with distances, frontier size, capacity vs population, gap status) plus engine-side helpers (`predators_within(r)`, `nearest_food_dist()`, `patch_reserve(id)`, `cell(x, y)`). The `World` object is never passed.
 - **Policy** comes back as a table — ranking weights, guard distribution, night policy, build plan, paving threshold, capacity margin, `request_revision`, and (from v2) the desired role mix — converted to a `Dictionary` and checked against a schema and value bounds.
-- **`StrategyRunner`** hides the language: the prototype runner loads GDScript on the fly (`GDScript.new()` + `reload()`), guarded by a static identifier whitelist and a dry run in a thread with a timeout; the v1.5 runner is Lua 5.4 via godot-luaAPI — a real sandbox (no `os`, `io`, `require`, `load`, nothing from the engine) with an instruction counter that interrupts a looping `plan()`. On the server (v4), Lua is mandatory.
+- **`StrategyRunner`** hides the execution environment. From the first prototype (v0.5) the runner is **Lua 5.4 via godot-luaAPI**: a real sandbox — only `base`/`table`/`string`/`math` are bound, so `os`, `io`, `require`, `load` and the engine simply do not exist for a strategy — with an instruction-counter hook that interrupts a looping `plan()` and protected calls for errors. `memory` is plain data only (it is saved with the state). There is no GDScript runner; the seam stays so the environment could be swapped without touching the rest of the code.
 
 **Who writes the program — `queen_brain`:**
 
@@ -140,7 +140,7 @@ No global A* over millions of cells:
 
 ## Determinism and replay
 
-One seed drives worldgen and the simulation; all randomness flows through the single seeded RNG; agents step in id order; observer commands apply at tick boundaries; LLM responses are journaled by tick. Consequences: identical runs from a seed, save/load that continues bit-identically, the arena's fair comparisons, and (v3) full replay from seed + intervention journal alone.
+One master seed drives everything, and randomness flows through **named streams** (worldgen, spawner, combat, strategy, interventions) derived from it — so an observer intervention consumes only its own stream and shifts nothing else. Agents step in id order; observer commands apply at tick boundaries; LLM responses are journaled by tick. **Sim arithmetic is integer-only**: energy and every accumulated quantity are fixed-point (§Agents), and transcendental functions (sin/pow/exp) are banned inside `res://sim/` — so runs replay bit-identically across platforms (the macOS app and the v4 Linux server). Float noise is allowed only in worldgen, whose output is computed once from the seed and stored as byte arrays. Consequences: identical runs from a seed on any platform, save/load that continues bit-identically, the arena's fair comparisons, and (v3) full replay from seed + intervention journal alone.
 
 ## Performance and memory
 
@@ -148,19 +148,18 @@ At 2048x2048: terrain 4 MB + structures 4 MB + knowledge 4 MB and distance field
 
 ## Saves
 
-Since the sim is pure data, saving is serialization: format version, seed and parameters, clock, layer arrays, sparse object/agent dictionaries, nest state (storages, task board, build plan/queue, frontier), strategy program + journal, RNG state — `var_to_bytes` into a compressed file (`FileAccess.open_compressed`) beside a small JSON header (version, seed, day, population, date) for slot lists. **Saving is automatic**: every dawn (`autosave_ticks` 1120), on exit, and before applying a new strategy version; the last 3 autosaves plus one per simulation day are kept; launch resumes from the latest autosave — "new world" is a deliberate action. Writes run on a background thread from array copies, to a temp name renamed on success, so a crash never corrupts the previous save. Loading rebuilds the render, minimap, and distance field. Backward compatibility across format versions is not guaranteed before v4 (saves move server-side there).
+Since the sim is pure data, saving is serialization: format version, seed and parameters, clock, layer arrays, sparse object/agent dictionaries, nest state (storages, task board, build plan/queue, frontier), strategy program + journal + `memory`, RNG stream states — `var_to_bytes` into a compressed file (`FileAccess.open_compressed`) beside a small JSON header (version, seed, day, population, date) for slot lists. **Saving is automatic**: every dawn (`autosave_ticks` 1120), on exit, and before applying a new strategy version; the last 3 autosaves plus one per simulation day are kept; launch resumes from the latest autosave — "new world" is a deliberate action. Writes run on a background thread from array copies, to a temp name renamed on success, so a crash never corrupts the previous save. Loading rebuilds the render, minimap, and distance field. Backward compatibility across format versions is not guaranteed before v4 (saves move server-side there).
 
 ## Error handling and resilience
 
-- **Strategy versions** that fail any validation step are discarded; the previous program keeps running. A `plan()` that loops is interrupted (timeout in the prototype, instruction limit in Lua) and treated as a failed version.
+- **Strategy versions** that fail any validation step are discarded; the previous program keeps running. A `plan()` that loops is interrupted by the Lua instruction limit and treated as a failed version.
 - **LLM failures** (timeout, API error, malformed program) never stall the tick loop — calls are async and the current program continues; the minimum-interval guard holds at high speed.
 - **Pathfinding**: an unreachable or vanished target cancels the task; blocked next-cells trigger replanning; scouts fall back to random walk.
 - **Saves** are atomic (temp + rename) and off-thread; a failed save is logged and retried at the next trigger, never crashing the sim.
 
 ## Security
 
-- Prototype strategies (GDScript): static whitelist of identifiers + dry run with timeout — cheap guards, no real isolation.
-- v1.5+ strategies (Lua): a true sandbox — no `os`/`io`/`require`/`load`/engine access, instruction counter. Mandatory on the server, where foreign strategies may appear.
+- Strategies run sandboxed from the first prototype: Lua 5.4 with only `base`/`table`/`string`/`math` bound (no `os`/`io`/`require`/`load`/engine access) and an instruction counter. Every new version additionally passes schema/bounds validation and a dry run on recorded states. On the server (v4), where foreign strategies may appear, the same sandbox is the outer wall.
 - LLM keys live in local configuration outside the repo (v1); from v4, only on the server.
 - Server access (v4): one shared token for all clients, TLS (`wss://`) terminated by Caddy/nginx, external access via tunnel or VPN. No accounts.
 
@@ -177,7 +176,7 @@ Defaults are data (`res://data/*.tres` — `roles.tres`, `predators.tres`, `sim_
 
 ## Stack and repository layout
 
-Godot 4.x (4.3+), GDScript; godot-luaAPI from v1.5; Gemini 3.1 Pro via the Google AI API behind an abstracted provider seam. Graphics are vector SVG sprites rasterized at import (128 px/cell, mipmaps), tinted via `modulate`; a tile window around the camera, `MultiMeshInstance2D` for myrmeks with interpolated motion, `AnimatedSprite2D` for the few predators, `CanvasModulate` for day/night.
+Godot 4.x (4.3+), GDScript; godot-luaAPI from v0.5, its version pinned together with the Godot version; gdUnit4 for headless tests; Gemini 3.1 Pro via the Google AI API behind an abstracted provider seam. Graphics are vector SVG sprites rasterized at import (128 px/cell, mipmaps), tinted via `modulate`; a tile window around the camera, `MultiMeshInstance2D` for myrmeks with interpolated motion, `AnimatedSprite2D` for the few predators, `CanvasModulate` for day/night.
 
 ```
 res://sim/        pure simulation, no Node: world, worldgen, clock, agent, myrmek,
@@ -189,7 +188,7 @@ res://ui/         hud, inspector, params_panel, stats, tools, queen panel
 res://llm/        providers (gemini, openai_compat, anthropic, ollama, mock), API docs, prompts
 res://data/       roles.tres, predators.tres, sim_params.tres
 res://art/        SVG sprites
-res://tests/      gdUnit4 or GUT: headless simulation tests
+res://tests/      gdUnit4: headless simulation tests
 res://server/     (v4) server main scene: tick loop, clients, command journal, autosave
 res://client/     (v4) client main scene: connection, local state copy, camera
 res://net/        (v4) protocol: snapshot, deltas, chunk versions, commands
@@ -200,9 +199,9 @@ res://net/        (v4) protocol: snapshot, deltas, chunk versions, commands
 Every roadmap phase ships with the tests that encode its DoD; all sim tests run headless.
 
 - **Unit**: worldgen guarantees, energy math, state machines, flood-fill interior/capacity, frontier maintenance, distance-field weights, traffic → `PAVE` queue, night multipliers, task ranking.
-- **Contract**: `StateView` shape and helpers, policy schema/bounds, `StrategyRunner` behaviour (both runners against a golden `StateView`), task shape and lifecycle, save round-trip, tick phase order. Changing a contract changes its test.
+- **Contract**: `StateView` shape and helpers, policy schema/bounds, `StrategyRunner` behaviour (the Lua runner against golden `StateView` fixtures), task shape and lifecycle, save round-trip, tick phase order. Changing a contract changes its test.
 - **Determinism**: same seed → identical state hash after N ticks; save/load → bit-identical continuation; replay from journal matches the original run.
-- **Strategy safety**: forbidden identifiers rejected (prototype), sandbox escapes blocked and instruction limit fires (Lua), malformed/out-of-bounds policies rejected, a failed version leaves the previous one running.
+- **Strategy safety**: sandbox escapes blocked, the instruction limit fires on a looping `plan()`, malformed/out-of-bounds policies rejected, a failed version leaves the previous one running.
 - **Balance smoke**: headless seed batches — without the LLM the nest survives the first night in ≥50% of seeds.
 - **LLM**: `MOCK` provider only in tests — no paid calls; the full report → program → validation → apply loop against canned programs, including deliberately broken ones.
 
@@ -210,18 +209,16 @@ Every roadmap phase ships with the tests that encode its DoD; all sim tests run 
 
 Decisions still open, each with the current recommendation. When one is settled, fold the answer into the sections above and log it in the history; new questions are added here as they arise.
 
-1. **Strategy language in the prototype (v0.5)** — a throwaway GDScript runner first (zero dependencies), or Lua via godot-luaAPI from the start, which removes the weak static-whitelist safety, the double implementation, and the parity suite at the cost of one prototype dependency? *Recommendation: Lua from v0.5; `StrategyRunner` stays either way.*
-2. **Test framework** — gdUnit4 or GUT. *Recommendation: gdUnit4 (headless reports, parameterized tests, CI integration); pinned the moment v0.1 creates `scripts/test.sh`.*
-3. **Cross-platform float determinism** — basic IEEE arithmetic replays identically across platforms, but libm functions (sin/pow) do not. Do we require bit-identical runs between the Linux server (v4) and macOS clients? *Recommendation: yes — keep energy and every accumulated quantity in fixed-point integers (hundredths) and ban transcendental functions inside `res://sim/`; determinism then crosses platforms for free.*
-4. **One RNG stream or named streams** — with a single stream, an observer intervention shifts every later draw in the simulation. *Recommendation: named streams (worldgen / spawner / combat / strategy) derived from the master seed; replays stay robust and effects stay local.*
-5. **The async boundary** — `HTTPRequest` is a `Node`, and the sim is pure data. *Recommendation: pin as a contract that `res://sim/` never touches the network or the scene tree — the LLM client lives in the app/server layer behind the provider seam, and a new program version enters the sim only at a tick boundary.*
-6. **Serialization without objects** — a save read with `bytes_to_var_with_objects` is an attack vector (a foreign save becomes code execution). *Recommendation: plain types only in the save format (numbers, strings, arrays, dictionaries), never full objects; critical from v4 when saves live on the server.*
-7. **Arena execution model** — parallel headless processes or sequential in one process, and where results live. *Recommendation: sequential first (simplest determinism), parallel processes later; one results table per run under `user://arena/`.*
-8. **Local key configuration (v1)** — "outside the repo" is decided; the exact location and format are not. *Recommendation: a config file under the platform config dir (`OS.get_config_dir()`/myrmex), with environment variables taking precedence.*
+1. **The async boundary** — `HTTPRequest` is a `Node`, and the sim is pure data. *Recommendation: pin as a contract that `res://sim/` never touches the network or the scene tree — the LLM client lives in the app/server layer behind the provider seam, and a new program version enters the sim only at a tick boundary.*
+2. **Serialization without objects** — a save read with `bytes_to_var_with_objects` is an attack vector (a foreign save becomes code execution). *Recommendation: plain types only in the save format (numbers, strings, arrays, dictionaries), never full objects; critical from v4 when saves live on the server.*
+3. **Arena execution model** — parallel headless processes or sequential in one process, and where results live. *Recommendation: sequential first (simplest determinism), parallel processes later; one results table per run under `user://arena/`.*
+4. **Local key configuration (v1)** — "outside the repo" is decided; the exact location and format are not. *Recommendation: a config file under the platform config dir (`OS.get_config_dir()`/myrmex), with environment variables taking precedence.*
 
 ---
 
 ## History of changes
+
+**v1.2 (27.09.2026)** — four open questions decided and folded in: strategies are sandboxed Lua 5.4 from the first prototype, no GDScript runner (Components, The queen's brain, Security, Error handling, Stack, Testing); the test framework is gdUnit4 (Stack, layout); sim arithmetic is integer-only — fixed-point energy in thousandths, transcendental functions banned in the sim, cross-platform bit-identity stated (Agents, Determinism and replay); the RNG becomes named streams derived from the master seed (Components, Determinism and replay, Saves). Open questions renumbered — four remain.
 
 **v1.1 (27.09.2026)** — added the Open questions section: eight open decisions with recommendations (prototype strategy language, test framework, cross-platform float determinism, RNG streams, the async boundary, object-free serialization, the arena execution model, local key configuration).
 

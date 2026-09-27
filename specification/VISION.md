@@ -1,6 +1,6 @@
 # Vision — Myrmex
 
-Document version 1.1 — 27 September 2026.
+Document version 1.2 — 27 September 2026.
 
 ## In one sentence
 
@@ -65,7 +65,7 @@ The logic is cellular; the picture is free. Vector art — simple shapes, soft g
 - **The nest is autonomous.** The observer intervenes in the world — food, predators, parameters — never in a myrmek's head. There are no unit orders.
 - **Simulation is pure data.** The sim has no dependency on the scene tree; rendering only reads state. Headless runs (tests, arena, server) are first-class from day one.
 - **Determinism end to end.** One seed, discrete ticks, agents processed in id order, LLM responses journaled: any run replays exactly, with or without the model.
-- **Strategy is a program, not weights.** `plan(s) -> policy` plus a `memory` table, behind the `StrategyRunner` seam (GDScript in the prototype, sandboxed Lua later). Code can be read, diffed, versioned, and inherited.
+- **Strategy is a program, not weights.** `plan(s) -> policy` plus a `memory` table, behind the `StrategyRunner` seam — sandboxed Lua 5.4 from the very first prototype. Code can be read, diffed, versioned, and inherited.
 - **The LLM never controls a myrmek.** The model writes and revises the strategy program — rarely, asynchronously, budgeted. Tactics stay algorithmic and free.
 - **Physical rules, not conventions.** Walls block everyone without exception; a gap is a real ground cell; at most one agent per cell anywhere; nest capacity is its interior area; a demolished wall returns its resource. Defence is guards standing in gaps and builders sealing them, not special-case rules.
 - **Everything is a parameter.** Defaults live in data resources and on live sliders; balance is tuned, not hardcoded.
@@ -95,7 +95,7 @@ The logic is cellular; the picture is free. Vector art — simple shapes, soft g
 - **Policy** — the dictionary a strategy returns: ranking weights, guard distribution, night rules, build plan, thresholds. Schema- and bounds-checked.
 - **Strategy program** — the code (`plan(s) -> policy` + `memory`) that *is* the nest's strategy; authored by a human or an LLM.
 - **StateView** — the read-only window a strategy sees: copied scalars plus engine-side helper functions; never the `World` object.
-- **StrategyRunner** — the seam hiding the strategy language (GDScript prototype runner, sandboxed Lua runner) from the rest of the code.
+- **StrategyRunner** — the seam hiding the strategy execution environment (sandboxed Lua 5.4 via godot-luaAPI) from the rest of the code.
 - **`queen_brain`** — who authors the program: `PROGRAM` (human/library), `LLM` (model writes and revises), `LEARNED` (v6).
 - **Strategy library / arena** — stored strategy files with version history; headless batch runs on identical seeds producing a results table.
 - **Distance field** — weighted BFS over known passable cells; going home is gradient descent, no search.
@@ -105,6 +105,8 @@ The logic is cellular; the picture is free. Vector art — simple shapes, soft g
 ---
 
 ## History of changes
+
+**v1.2 (27.09.2026)** — decision folded in: strategies are sandboxed Lua from the first prototype (Principles, Glossary).
 
 **v1.1 (27.09.2026)** — restored vision material from the concept that Architecture and Roadmap do not carry: the strategy-program example and its meaning (The strategy is a program), the first-night math, food margin, night dilemma, no-cheat defence and the waking world (Designed tensions), the visual direction (The look), and evolution framed as two-level selection (What we are building).
 

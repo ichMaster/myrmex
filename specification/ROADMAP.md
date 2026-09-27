@@ -1,8 +1,8 @@
 # Roadmap — Myrmex
 
-Document version 1.0 — 27 September 2026.
+Document version 1.1 — 27 September 2026.
 
-Seven versions, built in order: **v0** prototype "First Night" (headless core, three roles, the spider, GDScript strategies, the Gemini loop) → **v1** the full nest (big world, six roles, three predators, paving, Lua sandbox, arena, full UI) → **v2** births → **v3** replay → **v4** server and clients → **v5** nests at war → **v6** evolution and the genome. Versions are numbered from 0; phases inside a version are numbered `vA.B`. Each phase lists a **Goal**, a short description, a **Tasks** list, and a **Definition of Done (DoD)**, and ships with the automated tests that encode its DoD (see [ARCHITECTURE.md](ARCHITECTURE.md) §Testing).
+Seven versions, built in order: **v0** prototype "First Night" (headless core, three roles, the spider, sandboxed Lua strategies, the Gemini loop) → **v1** the full nest (big world, six roles, three predators, paving, the full StateView, the arena, full UI) → **v2** births → **v3** replay → **v4** server and clients → **v5** nests at war → **v6** evolution and the genome. Versions are numbered from 0; phases inside a version are numbered `vA.B`. Each phase lists a **Goal**, a short description, a **Tasks** list, and a **Definition of Done (DoD)**, and ships with the automated tests that encode its DoD (see [ARCHITECTURE.md](ARCHITECTURE.md) §Testing).
 
 **Versioning (`A.B.C`).** Roadmap phase `vA.B` → semver `A.B.0`; a post-release fix on that phase bumps `C`. Never bump a version without explicit confirmation.
 
@@ -21,7 +21,7 @@ The living nest in miniature, built to answer three questions: does the vector l
 Stand up `res://sim/` as pure data: layer arrays, the clock with the day cycle, the single seeded RNG, worldgen, the seven-phase tick loop (with empty agent phases for now), serialization, and a headless entry point that prints statistics.
 
 **Tasks:**
-- Project skeleton; `res://sim/` with `world.gd`, `clock.gd`, `rng.gd`, `worldgen.gd`; parameters in `res://data/sim_params.tres`.
+- Project skeleton; `res://sim/` with `world.gd`, `clock.gd`, `rng.gd` (named streams derived from the master seed), `worldgen.gd`; parameters in `res://data/sim_params.tres`; the gdUnit4 addon and `scripts/test.sh` as the canonical headless test gate.
 - Worldgen from seed: noise water/rock + cellular smoothing, largest-region start point cleared to radius 12, start guarantees (≥2 patches, ~20 food within 30 cells), patches with shared reserves, starting food.
 - The tick loop with the fixed phase order; day/dusk/night/dawn transitions; speed multipliers and step as sim-level controls.
 - Food spawning (`T_food`/`p_food`) and patch regeneration (`T_res`) — world-wide in v0 (no chunks).
@@ -59,7 +59,7 @@ Agents arrive: worker/builder/guard state machines, the queen's tactical task bo
 - Roles: worker (carries if there is something to carry, mines if a patch is assigned, else explores the frontier), builder (walls, storages, open/close gaps), guard (patrol ring, stand in gaps); the immobile queen.
 - Knowledge mask + incremental frontier; reveal radius 2 (5 for exploring workers); pathfinding: global weighted BFS distance field + local `AStarGrid2D`; unreachable targets never assigned.
 - Task board on `N_plan`: `EXPLORE`, `FETCH_FOOD`, `HARVEST`, `BUILD`, `FEED_MYRMEK`, `PATROL`, `HOLD_GAP`, `OPEN_GAP`, `CLOSE_GAP`; ranking safety → feeding → food → build → explore; greedy assignment by distance; the hardcoded first-day plan.
-- Energy and hunger per §Agents (ARCHITECTURE); eating from storage; starvation deaths with the cargo-drop rule.
+- Energy and hunger per §Agents (ARCHITECTURE), stored as fixed-point integers; eating from storage; starvation deaths with the cargo-drop rule.
 - Construction: fixed-ring nest plan growing with population, `build_time`/`demolish_time`, resource return, flood-fill interior and capacity, `seal_at_night` (seal at dusk, reopen at dawn); night policy pulling myrmeks inside.
 
 **DoD:** on a typical seed the nest raises a closed ring with one gap and a stocked food storage before the first dusk; myrmeks eat, starve, and die believably; capacity is respected; the whole thing still runs headless.
@@ -81,21 +81,22 @@ Agents arrive: worker/builder/guard state machines, the queen's tactical task bo
 
 ### v0.5 — The strategy program and the LLM loop
 
-**Goal:** the queen's policy becomes a program; Gemini writes and revises it.
+**Goal:** the queen's policy becomes a sandboxed Lua program; Gemini writes and revises it.
 
-The strategic level over the task board: GDScript strategies loaded on the fly behind `StrategyRunner`, the tiny `StateView`, validation, the version journal, and the `PROGRAM`/`LLM` modes with Gemini 3.1 Pro and `MOCK`.
+The strategic level over the task board: Lua 5.4 strategies via godot-luaAPI behind `StrategyRunner`, the tiny `StateView`, validation, the version journal, and the `PROGRAM`/`LLM` modes with Gemini 3.1 Pro and `MOCK`.
 
 **Tasks:**
-- `StrategyRunner` with the GDScript runner (`GDScript.new()` + `reload()`); `memory` persistence between calls.
+- The godot-luaAPI addon, its version pinned together with the Godot version.
+- `StrategyRunner` with the Lua 5.4 runner: only `base`/`table`/`string`/`math` bound (no `os`/`io`/`require`/`load`, nothing from the engine), an instruction-counter hook that interrupts a looping `plan()`, protected calls, table conversion both ways; `memory` persists between calls (plain data only — it is saved with the state).
 - Tiny `StateView` (~10 scalars: phase, population, deaths since dawn, food store, nearest food, predators within radius, ring closed, capacity vs population, gap status) + 6 policy fields (food-vs-build weight, guards-at-gaps share, seal at night, ring radius, workers-on-resource share, build priority); schema and bounds validation.
-- Safety: static identifier whitelist; dry run in a thread with timeout; a failed version is discarded, the previous keeps running.
+- Safety: the sandbox + instruction limit, policy bounds, and a dry run on recorded states; a failed or interrupted version is discarded, the previous keeps running.
 - `PROGRAM` mode with strategy files; the version journal `{source, author_mode, tick, change_note}`; autosave before applying a new version.
 - `LLM` mode: report assembly (state + metrics + fired branches), async `HTTPRequest`, minimum real-time interval; providers Gemini 3.1 Pro and `MOCK` (program from file); revision triggers — first night, "more than three deaths since dawn", `request_revision`.
 - Queen panel: current program with fired-branch highlighting, last policy and explanation, version history.
 
-**DoD:** the concept's loop criterion — a program from Gemini arrives in under ten seconds and **visibly changes behaviour** (after losses, more guards at gaps; short on space, an earlier wider ring); a deliberately broken version is rejected and the nest keeps its previous strategy; a saved run replays with the journaled programs, no new model calls.
+**DoD:** the concept's loop criterion — a program from Gemini arrives in under ten seconds and **visibly changes behaviour** (after losses, more guards at gaps; short on space, an earlier wider ring); a deliberately broken version is rejected and a deliberately looping `plan()` is interrupted without stalling a tick — the nest keeps its previous strategy either way; a saved run replays with the journaled programs, no new model calls.
 
-**Tests:** runner contract; whitelist rejections; dry-run failure → previous version stays; policy bounds; `MOCK` end-to-end (report → program → apply); journal replay determinism. No paid calls in tests.
+**Tests:** runner contract; sandbox escape attempts (`os`, `io`, `require`, `load`, `_G` tricks) blocked; the instruction limit fires; dry-run failure → previous version stays; policy bounds; `MOCK` end-to-end (report → program → apply); journal replay determinism. No paid calls in tests.
 
 ### v0.6 — Inspector, interventions, event log
 
@@ -112,7 +113,7 @@ The strategic level over the task board: GDScript strategies loaded on the fly b
 
 ## v1 — The full nest
 
-Scale the prototype to the full simulation: the big chunked world with an active zone, six specialized roles with cargo handover, the full predator ecology and defence strategies, paving and roads, the sandboxed Lua strategy runtime with a library and arena, and the complete observer surface with rotating saves. Default population 100 + the queen (15/20/15/30/20). Depends on: v0.
+Scale the prototype to the full simulation: the big chunked world with an active zone, six specialized roles with cargo handover, the full predator ecology and defence strategies, paving and roads, the full strategy surface with a library and arena, and the complete observer surface with rotating saves. Default population 100 + the queen (15/20/15/30/20). Depends on: v0.
 
 ### v1.1 — Big world: chunks and the active zone
 
@@ -166,20 +167,19 @@ Scale the prototype to the full simulation: the big chunked world with an active
 
 **Tests:** traffic decay and thresholding; pave queue ordering; field weights; no predator speedup.
 
-### v1.5 — Lua strategies, the library, and the arena
+### v1.5 — The full StateView, the library, and the arena
 
-**Goal:** a real sandbox and comparable strategies.
+**Goal:** the full strategy surface and comparable strategies (the sandboxed Lua runner itself ships in v0.5).
 
 **Tasks:**
-- Lua 5.4 runner via godot-luaAPI behind the same `StrategyRunner`: sandbox (no `os`/`io`/`require`/`load`/engine), instruction counter interrupting `plan()`, table conversion both ways.
-- The full `StateView` (ARCHITECTURE §Contracts) and full policy schema; the API description for the LLM updated to Lua.
+- The full `StateView` (ARCHITECTURE §Contracts) and the full policy schema; the LLM's API description extended to match.
 - Strategy library (`user://strategies/`): names, versions, revision history; load as `PROGRAM`; save-to-library from the queen panel.
 - The arena: headless batch runs of N strategies × M seeds → a results table (survival, food, deaths, capacity growth).
 - Providers: OpenAI-compatible, Anthropic, Ollama alongside Gemini and `MOCK`; keys in local config outside the repo.
 
-**DoD:** the same strategy semantics run on both runners; a deliberately looping `plan()` is interrupted without stalling a tick; the arena ranks a set of strategies on identical seeds reproducibly.
+**DoD:** the full `StateView` and policy surface are pinned by contract tests; the arena ranks a set of strategies on identical seeds reproducibly.
 
-**Tests:** sandbox escape attempts blocked; instruction limit fires; GDScript↔Lua parity on a golden `StateView`; arena determinism; provider abstraction against mocks.
+**Tests:** golden `StateView` fixtures → expected policies; full policy schema bounds; arena determinism; provider abstraction against mocks.
 
 ### v1.6 — The full observer surface and saves
 
@@ -347,5 +347,7 @@ Selection at both levels: bodies and strategies. Depends on: v2 (births), v5 (mu
 ---
 
 ## History of changes
+
+**v1.1 (27.09.2026)** — decisions folded in: strategies are sandboxed Lua 5.4 from the prototype — v0.5 rewritten around godot-luaAPI (sandbox, instruction limit, dry run) and v1.5 renamed to "The full StateView, the library, and the arena" with the GDScript↔Lua parity tests dropped (intro, v1 intro, v0.5, v1.5); gdUnit4 and `scripts/test.sh` pinned in v0.1; named RNG streams in v0.1; fixed-point energy in v0.3.
 
 **v1.0 (27.09.2026)** — initial version, derived from the retired concept v0.20 ([history/](history/)); the concept's v1.1 births / v1.2 replay / v1.3 server / v2 ideas renumbered as v2 / v3 / v4 / v5–v6.
