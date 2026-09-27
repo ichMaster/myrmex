@@ -1,6 +1,6 @@
 # Design Brief — Myrmex UI Mockups
 
-Document version 1.2 — 27 September 2026.
+Document version 1.3 — 27 September 2026.
 
 The brief and full specification for mocking up the observer interface and the complete object set in the Claude Design app. Derived from [VISION.md](VISION.md) §The look, [ARCHITECTURE.md](ARCHITECTURE.md) (§Agents, §Nest, §Observability, §What v0 implements) and [ROADMAP.md](ROADMAP.md) (v0.2, v0.6, v1.6) — those three remain the source of truth; if this brief disagrees with them, they win.
 
@@ -20,7 +20,7 @@ Produce mockups for:
 
 ## 2. Style pillars
 
-- **Pure top-down.** The camera looks straight down — **no isometric, no StarCraft-style ¾ pseudo-3D**, no elevation on walls or rocks: depth reads through shape, tint and a soft drop shadow, never through perspective. This is structural, not taste: agents are one sprite **rotated toward heading** (¾ view would demand directional frame sets), sprites fit their cells with no y-sorting, and the asset budget stays ~20 SVGs.
+- **Pure top-down.** The camera looks straight down — **no isometric, no StarCraft-style ¾ pseudo-3D**, no elevation on walls or rocks: depth reads through shape, tint and a soft drop shadow, never through perspective. This is structural, not taste: agents are one sprite **rotated toward heading** (¾ view would demand directional frame sets), sprites fit their cells with no y-sorting, and the asset budget stays ~26 SVGs.
 - **"The logic is cellular; the picture is free."** Vector: simple shapes, soft gradients and shadows. Deliberately **no pixel-art**, no outline-only line art.
 - **One silhouette, many tints.** A single myrmek shape for every role; role, day phase and state are **color** (engine `modulate` tint), never separate assets. Sprites are drawn **white/grey wherever color varies**.
 - **Sharp at every zoom.** SVG sources rasterized at 128 px/cell with mipmaps; art must read from 8 to 48 px per cell on screen.
@@ -30,14 +30,14 @@ Produce mockups for:
 
 - Role tints distinguishable at **16 px per cell**, and not by hue alone — lightness must differ too (color-blind safe: prefer blue/orange oppositions to red/green).
 - One agent per cell: a myrmek fits inside its cell (~0.8 cell); predators are visually **1.5–2 cells**; the queen is clearly larger than a worker but stationary.
-- The whole set stays hand-drawable: **~20 SVGs** total.
+- The whole set stays hand-drawable: **~26 SVGs** total.
 - HUD text contrast ≥ 4.5:1; icons are drawn strokes, never emoji; touch targets ≥ 44 px (the web client arrives in v4).
 - A gap in the wall is **ordinary ground** — it must read as an opening in the ring, not as a special "door" object.
 
 ### Anti-patterns (from early AI mockups — do not repeat)
 
 - **Pseudo-3D / ¾ RTS perspective** — tall rocks, domed nests, wall elevation. Top-down only.
-- **Trees, bushes, decorative flora** — the terrain is ground, water and rock; nothing else exists.
+- **Trees and bushes** — canopy-scale flora reads as an obstacle that does not exist; the terrain is ground, water and rock. Ground-cover decor (row 21: tufts, pebbles, flowers, dry patches) is the sanctioned variety.
 - **A tamagotchi queen panel** (health / reproduction / "laying eggs") — the queen panel is the mode chip, the Lua program with fired branches, the policy readout and the version history. Births don't exist before v2.
 - **Dig / build / terraform tools** — the observer never digs or builds; interventions act on the world (food, predators), never on structures.
 - **HP on walls** — walls have no hit points; builders demolish them in time, nothing "damages" them before v5.
@@ -103,7 +103,7 @@ Panel `#201F1C` · raised `#2A2926` · text `#FAF9F5` · dim text `#B8B2A6` · a
 
 **Rules:** anything that must be told apart differs in lightness, never hue alone; the night overlay may not push role tints below distinguishability at 16 px — verify on the States board.
 
-## 5. Object and sprite inventory (~20 SVGs)
+## 5. Object and sprite inventory (~26 SVGs)
 
 Master cell = 128 px. "Size" is in cells.
 
@@ -129,6 +129,7 @@ Master cell = 128 px. "Size" is in cells.
 | 18 | Selection ring | v0 | 1.2 | UI accent | myrmek / cell variants | inspector target |
 | 19 | Path line + target marker | v0 | — | UI accent | — | drawn for the inspected myrmek |
 | 20 | Gap light | v1 | ~2 radial | `#FFD9A0` | night only | warm glow at each open gap (`PointLight2D`, v1.6 — not in the prototype) |
+| 21 | Decor set — grass tuft A/B, pebbles, flower, dry patch, moss fleck | v0 | ≤0.5 | `#6E8F52` `#A8A399` `#F2EFE9`+`#E8C84A` `#A3B378` `#7A9A5C` | — | render-only ground dressing, ~1 per 5 ground cells, seeded from `hash(world_seed, cell)`; must read visibly non-blocking |
 
 ## 6. Observer screen anatomy (design at 1440×900)
 
@@ -161,7 +162,7 @@ World view fills the frame; HUD is edge-anchored, dark chrome:
 
 Deliverables (as canvas artboards):
 
-1. Sprite sheet v0 — items 1–15, 18–19 on light and dark ground, at 32 px and 16 px (item 20, the gap light, joins in v1).
+1. Sprite sheet v0 — items 1–15, 18–19 and the decor set 21 on light and dark ground, at 32 px and 16 px (item 20, the gap light, joins in v1).
 2. Observer screen — day.
 3. Observer screen — first night (hero shot).
 4. Queen panel — `LLM` mode with fired branches.
@@ -174,6 +175,8 @@ Accepted when: pleasant at both v0 zooms (ROADMAP v0.2 DoD); every silhouette un
 ---
 
 ## History of changes
+
+**v1.3 (27.09.2026)** — added the decor set as inventory row 21 (six render-only ground-dressing sprites, seed-hashed, non-blocking), grew the budget to ~26 SVGs, included it in deliverable 1, and narrowed the flora anti-pattern to canopy-scale only.
 
 **v1.2 (27.09.2026)** — pinned pure top-down projection as the first style pillar (with the structural reasons) and added the Anti-patterns section distilled from an early AI mockup: no pseudo-3D, no flora, no tamagotchi queen panel, no dig/build tools, no wall HP, no torches, no manual save buttons.
 

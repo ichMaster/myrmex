@@ -1,6 +1,6 @@
 # Design Brief — Myrmex v0 Prototype Interface
 
-Document version 1.1 — 27 September 2026.
+Document version 1.2 — 27 September 2026.
 
 A self-contained brief for the Claude Design app: mock up **exactly what the v0 prototype's interface will look like** — nothing from later versions. Companion to [DESIGN_BRIEF.md](DESIGN_BRIEF.md) (the full-system brief); where they disagree, the v0 rules here win for these mockups.
 
@@ -57,16 +57,16 @@ Docked right, dark chrome, monospace for code:
 
 ## Artboards to produce
 
-1. **Screen — day** (1440×900, 32 px/cell): mid-day economy — the clay wall ring with one open gap, a guard in the gap, workers hauling food (cargo dots), builder at a half-built wall (ghost at 50%), queen + both storages inside, full HUD as specified.
+1. **Screen — day** (1440×900, 32 px/cell): mid-day economy, the ground dressed by the sparse decor layer — the clay wall ring with one open gap, a guard in the gap, workers hauling food (cargo dots), builder at a half-built wall (ghost at 50%), queen + both storages inside, full HUD as specified.
 2. **Screen — first night** (same scene, 16 px/cell): night overlay 55%, the gap **walled shut**, spider `#5A4A66` prowling outside, two stragglers by the wall with a guard, event log showing `gap closed for the night`. This is the hero shot.
 3. **Queen panel — expanded** (~420×900) as specified above.
 4. **Inspector — both variants** (~380×520 each): myrmek with path visible in a world snippet; cell layers.
-5. **v0 sprite mini-sheet** (~1200×800): ground · water · rock · wall (+50% ghost) · storage-food (empty/⅔/full) · storage-res · queen chamber · food ×1/×3/×5 · resource (rich/depleted) · pile · **myrmek** in three role tints + cargo dot · queen · spider (ambush/lunge/eating) · selection ring · path marker — each on light and dark ground, at 32 px and a 16 px strip below.
+5. **v0 sprite mini-sheet** (~1200×800): ground · water · rock · wall (+50% ghost) · storage-food (empty/⅔/full) · storage-res · queen chamber · food ×1/×3/×5 · resource (rich/depleted) · pile · **myrmek** in three role tints + cargo dot · queen · spider (ambush/lunge/eating) · selection ring · path marker · the **decor set** (grass tufts ×2, pebbles, flower, dry patch, moss fleck — render-only ground dressing, ~1 per 5 cells, visibly non-blocking) — each on light and dark ground, at 32 px and a 16 px strip below.
 6. **Minimap close-up** (256×256 shown at 2×): the known blob around the nest, unknown black beyond, red spider dot, white myrmek specks, viewport rectangle.
 
 ## Anti-patterns — do not draw
 
-Pseudo-3D / ¾ perspective · trees or any flora (terrain is ground, water, rock — nothing else) · a queen panel with health/reproduction/eggs (it shows the mode chip, the Lua program, the six policy fields, the history) · dig or build tools (interventions are food and the spider only) · HP bars on walls · torches, lanterns or glowing eyes at night (the tint is the night) · manual save buttons (only `saved · day N`).
+Pseudo-3D / ¾ perspective · trees or bushes (obstacle-scale flora; the ground-cover decor set from the sprite list is welcome) · a queen panel with health/reproduction/eggs (it shows the mode chip, the Lua program, the six policy fields, the history) · dig or build tools (interventions are food and the spider only) · HP bars on walls · torches, lanterns or glowing eyes at night (the tint is the night) · manual save buttons (only `saved · day N`).
 
 ## Acceptance
 
@@ -75,6 +75,8 @@ Role tints apart at 16 px (they differ in lightness, not hue alone); wall ≠ ro
 ---
 
 ## History of changes
+
+**v1.2 (27.09.2026)** — added the decor set to the sprite sheet and the day screen, and narrowed the flora anti-pattern to obstacle-scale only.
 
 **v1.1 (27.09.2026)** — pinned pure top-down in the style paragraph and added the Anti-patterns list distilled from an early AI mockup.
 

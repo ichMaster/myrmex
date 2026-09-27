@@ -1,6 +1,6 @@
 # Architecture — Myrmex
 
-Document version 1.15 — 27 September 2026.
+Document version 1.16 — 27 September 2026.
 
 ## Overview
 
@@ -99,7 +99,7 @@ Estimated size of the whole prototype: three to four thousand lines of GDScript.
 - **Spawner** (`spawner.gd`). Food, resource regeneration, predator population — active zone only.
 - **RNG** (`rng.gd`). Named seeded streams (worldgen, spawner, combat, strategy, interventions), all derived from the master seed; every random draw goes through one of them.
 - **Save** (`save.gd`). Serialization, autosave, slots. See §Saves.
-- **View** (`res://view/`). Tile-window renderer, MultiMesh agents, minimap, day/night modulation. Reads state, never writes it.
+- **View** (`res://view/`). Tile-window renderer, MultiMesh agents, minimap, day/night modulation, and the **decor layer**: render-only ground dressing (grass tufts, pebbles, flowers, dry patches, moss by water) placed by `hash(world_seed, cell)` on ground cells (~1 per 5) — deterministic, absent from sim state, saves and the minimap, and strictly under-agent scale so nothing looks blocking that is not. Reads state, never writes it.
 - **UI** (`res://ui/`). HUD, inspector, parameter panel, statistics, intervention tools, queen panel.
 - **Server / Client / Net** (`res://server/`, `res://client/`, `res://net/`, v4). Headless tick loop with connected observers; snapshot-plus-deltas protocol. See ROADMAP v4.
 
@@ -531,7 +531,7 @@ Defaults are data (`res://data/*.tres` — `roles.tres`, `predators.tres`, `sim_
 | Randomness | `RandomNumberGenerator`, named streams | worldgen · spawner · combat · strategy · interventions, each derived from the master seed (`rng.gd`) |
 | Pathfinding | Hand-written weighted BFS + `AStarGrid2D` | Distance field for the global case, engine A* on a bounded rectangle for the local one — §Pathfinding |
 | Persistence | `var_to_bytes` + `FileAccess.open_compressed`, JSON header | Plain types only (never `*_with_objects`), background-thread writes, temp-then-rename — §Saves |
-| Rendering | `TileMapLayer` tile window · `MultiMeshInstance2D` (myrmeks) · `AnimatedSprite2D` (predators) · `Sprite2D` (objects) · `CanvasModulate` + `PointLight2D` (day/night) | Only a ~128x96 window around the camera is filled; myrmek positions interpolate between ticks so cell-stepping logic looks continuous |
+| Rendering | `TileMapLayer` tile window · `MultiMeshInstance2D` (myrmeks) · `AnimatedSprite2D` (predators) · `Sprite2D` (objects) · `CanvasModulate` + `PointLight2D` (day/night) | Only a ~128x96 window around the camera is filled; myrmek positions interpolate between ticks so cell-stepping logic looks continuous; a seed-hashed, render-only decor layer dresses ground cells |
 | Art | **SVG**, rasterized at import (128 px/cell, mipmaps), tinted via `modulate` | Small hand-drawable set; sharp from 8 to 48 px per cell; role/state/phase are colour, not extra assets |
 | Config data | Godot `Resource` `.tres` files | `roles.tres`, `predators.tres`, `sim_params.tres` — defaults are data, editable live from the parameters panel |
 | LLM | **Gemini 3.1 Pro** (Google AI API) via `HTTPRequest`, behind an abstracted provider seam | Alongside: OpenAI-compatible, Anthropic, local Ollama, and `MOCK` (reads a program from a file) — the only provider used in tests. Async; keys in a gitignored `.env` loaded into the environment (§Security), server-side only from v4 |
@@ -612,6 +612,8 @@ Decisions still open, each with the current recommendation. When one is settled,
 ---
 
 ## History of changes
+
+**v1.16 (27.09.2026)** — added the decor layer to the View component and the Tech stack rendering row: render-only ground dressing placed by `hash(world_seed, cell)`, deterministic, absent from sim state, saves and the minimap, under-agent scale only.
 
 **v1.15 (27.09.2026)** — the prototype de-complicated on purpose: **v0 runs exactly one shipped strategy (`baseline.lua`) and no selection or evaluation algorithm**. A scope note in The queen's brain marks everything from situations to the arena as v1.5; the v0 table, the `LLM` mode triggers (back to the three plain ones for v0), the shipped-strategies paragraph (the `fortress`/`forager`/`growth` trio moves to v1.5), Error handling, Saves, Configuration and Testing were version-marked to match. The one v0 safety valve kept: `plan_errors_to_fail` misfires in a row drop the nest to `BUILTIN` directly. The brain-diagram caption now says the right-hand judgment loop collapses away in v0.
 

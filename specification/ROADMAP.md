@@ -1,6 +1,6 @@
 # Roadmap — Myrmex
 
-Document version 1.6 — 27 September 2026.
+Document version 1.7 — 27 September 2026.
 
 Seven versions, built in order: **v0** prototype "First Night" (headless core, three roles, the spider, sandboxed Lua strategies, the Gemini loop) → **v1** the full nest (big world, six roles, three predators, paving, the full StateView, the arena, full UI) → **v2** births → **v3** replay → **v4** server and clients → **v5** nests at war → **v6** evolution and the genome. Versions are numbered from 0; phases inside a version are numbered `vA.B`. Each phase lists a **Goal**, a short description, a **Tasks** list, and a **Definition of Done (DoD)**, and ships with the automated tests that encode its DoD (see [ARCHITECTURE.md](ARCHITECTURE.md) §Testing).
 
@@ -42,11 +42,12 @@ The view layer over the untouched sim: flat tiles in a window around the camera,
 - Tile-window renderer (~128x96 buffer refilled on camera moves); flat tiles, no autotiling; zooms 16 and 32 px.
 - Camera panning (WASD, edge, drag); minimap 256x256 at 1 px/cell with the colour priority (unknown > predator > myrmek > food > resource > nest > water > rock > ground), viewport frame, click-to-move; updates only for changed cells every `N_map` ticks.
 - `CanvasModulate` day-phase gradient; pause / 1x / 4x / 16x / single step; day-and-tick counter with phase indicator.
+- The **decor layer**: ~6 small ground-dressing sprites (grass tufts ×2, pebbles, flower, dry patch, moss fleck) placed by `hash(world_seed, cell)` on ground cells (~1 per 5) — render-only, no sim state, no minimap, nothing in saves.
 - SVG sprite pipeline: import at 128 px/cell with mipmaps; tint via `modulate`.
 
-**DoD:** the generated world scrolls smoothly at both zooms at 16x speed; the minimap tracks changes and moves the camera; night is visibly night.
+**DoD:** the generated world scrolls smoothly at both zooms at 16x speed; the minimap tracks changes and moves the camera; night is visibly night; the field reads varied — dressed ground, not a flat green.
 
-**Tests:** the view never mutates sim state (contract); minimap block invalidation on cell changes. Visual quality is assessed manually (prototype criterion: pleasant at both zooms).
+**Tests:** the view never mutates sim state (contract); minimap block invalidation on cell changes; decor placement is a pure function of (seed, cell) — identical dressing on identical seeds, absent from saves. Visual quality is assessed manually (prototype criterion: pleasant at both zooms).
 
 ### v0.3 — Three roles, building, the first night
 
@@ -354,6 +355,8 @@ Selection at both levels: bodies and strategies. Depends on: v2 (births), v5 (mu
 ---
 
 ## History of changes
+
+**v1.7 (27.09.2026)** — v0.2 gains the render-only decor layer (six ground-dressing sprites placed by `hash(world_seed, cell)`), with the varied-field DoD line and the purity test.
 
 **v1.6 (27.09.2026)** — the prototype de-complicated by decision: v0.5 ships **one strategy (`baseline.lua`) and no judging machinery** — no goals, scorecard, situations, fit or ladder; a broken version is rejected, misfires drop to `BUILTIN`, and the model revises on the three plain triggers. The whole judging apparatus (six-goal coverage + scorecard, the situation classifier with all five situations, the full ladder with budget/fingerprints/dossier/rehabilitation, the `fortress`/`forager`/`growth` trio) moved to v1.5, retitled "Strategy judging, the library, and the arena", together with the corresponding tests.
 
