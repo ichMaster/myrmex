@@ -1,6 +1,6 @@
 # Design Brief — Myrmex v0 Prototype Interface
 
-Document version 2.1 — 27 September 2026.
+Document version 2.2 — 27 September 2026.
 
 A self-contained brief for a Claude Design session: mock up **exactly what the v0 prototype's interface will look like** — nothing from later versions. Companion to the canonical [design_handoff_myrmex_ui/DESIGN_BRIEF.md](design_handoff_myrmex_ui/DESIGN_BRIEF.md) (v2.0); where they disagree, the v0 rules here win for these mockups. Shape references: `design_handoff_myrmex_ui/sprites/`, scenes and `myrmex-art.js`.
 
@@ -12,7 +12,7 @@ Myrmex is a deterministic hive simulation: ~40 ant-like **myrmeks** (plus the **
 
 ## Style, in one paragraph
 
-**2:1 isometric, hand-painted, living hive.** The data grid is square; the picture is a 128×64 screen diamond per cell, depth-sorted by `x+y`. **No boxes** — highland is jagged crags, the nest wall a run of fleshy mounds with bone spines, storages are a translucent digestive sac and a ribbed bone hollow; volume comes from a lit and a dark facet plus a soft cast shadow. Creatures are one **living-hive** species (chitin over muscle, bone scythes, amber eyes — our own silhouettes, nobody else's): a parametric rig projected into **eight headings** (five painted, three mirrored), roles as **colour passes**, never runtime tints. The ground is one continuous painted surface — four biome tints blended by seeded noise, no visible cell seams — dressed by the decor set incl. passable **trees** (canopy fades to ~40% over an agent). Night is a full-screen tint; **no gap light in v0**, no torches, no glowing eyes. HUD: dark bevelled panels with a clay trim over the bright world; IBM Plex Sans / IBM Plex Mono; text contrast ≥ 4.5:1.
+**2:1 isometric, hand-painted, living hive.** The data grid is square; the picture is a 128×64 screen diamond per cell, depth-sorted by `x+y`. **No boxes** — highland is jagged crags, the nest wall a run of fleshy mounds with bone spines, storages are a translucent digestive sac and a ribbed bone hollow; volume comes from a lit and a dark facet plus a soft cast shadow. Creatures are one **living-hive** species and read alien, never Earth-insect: faceted chitin shells with a teal seam-glow `#7CF0D8` over hot-coral muscle `#D8465A`, bone blades, sensory slits, near-black contours `#14080E`. Creature and nest-structure art is **generated painted raster** (eight headings per sheet row, from the handoff's `CREATURE_PROMPTS.md`); roles are **colour passes**, never runtime tints; the rest of the world is procedural vector. The ground is one continuous painted surface — four biome tints blended by seeded noise, no visible cell seams — dressed by the decor set incl. passable **trees** (canopy fades to ~40% over an agent). Night is a full-screen tint; **no gap light in v0**, no torches, no glowing eyes. HUD: dark bevelled panels with a clay trim over the bright world; IBM Plex Sans / IBM Plex Mono; text contrast ≥ 4.5:1.
 
 ## v0 palette (finals from the handoff)
 
@@ -22,8 +22,8 @@ Myrmex is a deterministic hive simulation: ~40 ant-like **myrmeks** (plus the **
 | Water `#3F739F` (deep +`#0B2540`@30%) | Highland crags `#7E7568` | Rock `#8A8478` | Dirt trail — **not in v0** |
 | Nest ridge `#6B3557` | Creep floor `#4A2440` | Flesh `#8E3A5C` / hl `#C2567A` | Bone `#E2D6B8` · eye `#F2B233` |
 | Digestive sac `#9A4A72` (yolk `#D9A441`) | Bone hollow `#5E3A52` | Brood dome `#7A3A6A` | Food `#E8C84A` · ore `#8A5A3C` (+glow `#E07A4A`) · pile `#7A4E33` |
-| **Worker `#D9D2B4`** | **Builder `#C9A227`** | **Guard `#4A6FA5`** | **Brood mother `#B65C8F` + gold `#E8C84A`** |
-| **Lurker `#5A4A66`** | Tree canopy `#5F8A45` · trunk `#6B4A32` | | |
+| **Worker `#F2EBD8`** | **Builder `#FFB020`** | **Guard `#3EC9E8`** | **Brood mother `#B65C8F` + gold `#E8C84A`** |
+| **Lurker — gold `#C9A24A` armour, blue `#2E6CFF` lenses** | Muscle `#D8465A` · bone `#E2D6B8` · glow `#7CF0D8` | Tree canopy `#5F8A45` · trunk `#6B4A32` | |
 
 Minimap (1 px/cell, priority left→right): unknown `#141413` → predator `#D64545` → myrmek `#F2EFE9` → food `#E8C84A` → ore `#8A5A3C` → nest `#7A3A6A` → creep `#3E2244` → water `#5D8FB8` → highland `#6E6A62` → rock `#9A958D` → ground by biome (base `#4E6B3A`, dry `#5E7040`, lush `#456334`, dust `#587046`). Viewport rect `#FAF9F5` 1 px.
 
@@ -56,10 +56,10 @@ Header: brood-mother glyph (magenta disc, gold inner ring) + "Queen"; segmented 
 ## Artboards to produce
 
 1. **Screen — day** (1440×900, 32 px/cell iso): the fleshy ridge ring with one open gap, a guard in the gap, workers hauling (cargo sphere in the scythes), a builder at a ghost wall-mound, the brood dome with the brood mother one cell south, sac + hollow inside, a highland massif and a pond in view, full HUD.
-2. **Screen — first night** (same scene): night tint 55%, the gap **sealed** (ghost→solid), the lurker prowling outside, two stragglers by the ridge with a guard, event log `gap sealed for the night`. **No gap light.** The hero shot.
+2. **Screen — first night** (same scene): night tint 55%, the gap **sealed** (ghost→solid), the lurker lunging outside with a guard's slash arc and an alert marker over a straggler, event log `gap sealed for the night`. **No gap light.** The hero shot.
 3. **Queen panel — expanded** (~420×900) as specified.
 4. **Inspector — both variants** (~480 wide): myrmek with path; cell layers.
-5. **v0 sprite sheet** (~1400×900): ground ×4 tints · water shore/deep · rock · highland (interior/edge/outcrop) · ridge run/corner/end + ghost · digestive sac 0/⅓/⅔/full · bone hollow 0/½/full · brood dome · food 1/3/5 · ore rich/depleted · pile 1/3 · **myrmek 8 headings** in three role passes + cargo · brood mother · lurker (ambush/lunge/eating) · selection ellipse + cell diamond · path/target · decor ×14 incl. tree — on day and night ground, 32 px and a 16 px strip.
+5. **v0 sprite sheet** (~1400×900): ground ×4 tints · water shore/deep · rock · highland (interior/edge/outcrop) · ridge run/corner/end + ghost · digestive sac 0/⅓/⅔/full · bone hollow 0/½/full · brood dome · food 1/3/5 · ore rich/depleted · pile 1/3 · **myrmek 8 headings** (generated sheets) in three role passes + cargo · brood mother · lurker (ambush/lunge/eating sheets) · combat FX (slash arc, hit burst, blood pool, alert marker, fallen silhouette) · selection ellipse + cell diamond · path/target · decor ×14 incl. tree — on day and night ground, 32 px and a 16 px strip.
 6. **Minimap close-up** (256 shown at 2×): known blob, unknown black, red lurker dot, bone-white myrmek specks, biome tones, viewport rect.
 7. **Defeat card** over the night scene, as specified above.
 
@@ -78,6 +78,8 @@ Worker/builder/guard separate at 16 px on both day and night ground (lightness l
 ---
 
 ## History of changes
+
+**v2.2 (27.09.2026)** — handoff v2.8 palette and pipeline: bone/saffron/cyan castes with the teal-glow alien vocabulary, the gold-and-blue lurker, generated eight-heading sheets, combat FX added to the sprite sheet and the night hero shot.
 
 **v2.1 (27.09.2026)** — added the defeat card (infection / starvation variants, New world + Linger), artboard 7 and the defeat event line.
 

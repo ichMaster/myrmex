@@ -1,6 +1,6 @@
 # Roadmap — Myrmex
 
-Document version 1.10 — 27 September 2026.
+Document version 1.11 — 27 September 2026.
 
 Seven versions, built in order: **v0** prototype "First Night" (headless core, three roles, the spider, sandboxed Lua strategies, the Gemini loop) → **v1** the full nest (big world, six roles, three predators, paving, the full StateView, the arena, full UI) → **v2** births → **v3** replay → **v4** server and clients → **v5** nests at war → **v6** evolution and the genome. Versions are numbered from 0; phases inside a version are numbered `vA.B`. Each phase lists a **Goal**, a short description, a **Tasks** list, and a **Definition of Done (DoD)**, and ships with the automated tests that encode its DoD (see [ARCHITECTURE.md](ARCHITECTURE.md) §Testing).
 
@@ -12,7 +12,7 @@ Seven versions, built in order: **v0** prototype "First Night" (headless core, t
 
 ## v0 — Prototype "First Night"
 
-The living nest in miniature, built to answer three questions: does the vector look hold up at different zooms, is the simulation interesting to watch (roles, food economy, the first night), and does the "report → Gemini → program → behaviour change" loop work. Not a separate codebase — v1 with reduced scope: a 256x256 world without chunks (global BFS, 1 px/cell minimap), **three roles** (worker = scout+carrier+harvester, builder, guard; no cargo handover), 40 myrmeks + the queen (22/8/10), the spider only, fixed-ring nest plans, a tiny `StateView` (~10 state variables, 6 policy fields), two zooms (16/32 px), two interventions, one autosave file. Everything kept without compromise: pure-data sim, determinism, one agent per cell, energy and hunger, fog of war with a frontier, walls/gaps/night sealing, day–night with predator multipliers, the bare start, painted-raster sprites + MultiMesh rendering (the handoff SVGs serve as placeholders until painted art lands). Estimated size: three to four thousand lines of GDScript. Depends on: nothing — this is the foundation.
+The living nest in miniature, built to answer three questions: does the vector look hold up at different zooms, is the simulation interesting to watch (roles, food economy, the first night), and does the "report → Gemini → program → behaviour change" loop work. Not a separate codebase — v1 with reduced scope: a 256x256 world without chunks (global BFS, 1 px/cell minimap), **three roles** (worker = scout+carrier+harvester, builder, guard; no cargo handover), 40 myrmeks + the queen (22/8/10), the spider only, fixed-ring nest plans, a tiny `StateView` (~10 state variables, 6 policy fields), two zooms (16/32 px), two interventions, one autosave file. Everything kept without compromise: pure-data sim, determinism, one agent per cell, energy and hunger, fog of war with a frontier, walls/gaps/night sealing, day–night with predator multipliers, the bare start, the handoff's generated raster sheets for creatures and nest structures + procedural vector for the rest of the world. Estimated size: three to four thousand lines of GDScript. Depends on: nothing — this is the foundation.
 
 ### v0.1 — Headless simulation and world generator
 
@@ -56,7 +56,7 @@ The view layer over the untouched sim: flat tiles in a window around the camera,
 Agents arrive: worker/builder/guard state machines, the queen's tactical task board, knowledge and frontier, the energy economy, and nest construction with night sealing.
 
 **Tasks:**
-- Agent records and the shared state machine (`IDLE`/`GO_TO`/`WORK`/`RETURN`/`DEPOSIT` + `HUNGRY`/critical); 8-directional movement, one agent per cell; `MultiMeshInstance2D` rendering with interpolation and per-instance selection from the **eight-heading atlas** (five painted, three mirrored), one sheet per role (worker/builder/guard), via a small shader.
+- Agent records and the shared state machine (`IDLE`/`GO_TO`/`WORK`/`RETURN`/`DEPOSIT` + `HUNGRY`/critical); 8-directional movement, one agent per cell; `MultiMeshInstance2D` rendering with interpolation and per-instance selection from the **eight-heading generated sheets** (frame = heading index N…NW), one sheet per role (worker/builder/guard), via a small shader.
 - Roles: worker (carries if there is something to carry, mines if a patch is assigned, else explores the frontier), builder (walls, storages, open/close gaps), guard (patrol ring, stand in gaps); the immobile queen.
 - Knowledge mask + incremental frontier; reveal radius 2 (5 for exploring workers); pathfinding: global weighted BFS distance field + local `AStarGrid2D`; unreachable targets never assigned.
 - Task board on `N_plan`: `EXPLORE`, `FETCH_FOOD`, `HARVEST`, `BUILD`, `FEED_MYRMEK`, `PATROL`, `HOLD_GAP`, `OPEN_GAP`, `CLOSE_GAP`; ranking safety → feeding → food → build → explore; greedy assignment by distance; the hardcoded first-day plan. This is `queen_brain = BUILTIN`: the queen directs every myrmek on her own algorithm, with no strategy program anywhere in the project yet (Lua arrives in v0.5).
@@ -72,9 +72,10 @@ Agents arrive: worker/builder/guard state machines, the queen's tactical task bo
 **Goal:** danger that makes guards matter.
 
 **Tasks:**
-- Spider: ambush behaviour, `WANDER`/`HUNT`/`ATTACK`/`EAT`/`REST`, energy-driven hunting, night multipliers (cooldown, eating, vision); spawn ring 60–150 cells, target count; eight-heading frames for its three poses (five painted, three mirrored); displayed in the UI as the **lurker**.
+- Spider: ambush behaviour, `WANDER`/`HUNT`/`ATTACK`/`EAT`/`REST`, energy-driven hunting, night multipliers (cooldown, eating, vision); spawn ring 60–150 cells, target count; the three generated pose sheets (ambush/lunge/eating, frame = heading); displayed in the UI as the **lurker**.
 - Combat: 8-adjacent damage each tick, stacking attackers, gap crossfire; worker one-hit deaths, `FLEE` for workers; carcass → `FOOD` hauled to storage; cargo drop on death.
 - **Infection — the defeat rule**: at the start of the combat phase, a predator in any of the queen's 8 adjacent cells infects the colony and the run ends in defeat at once — journaled `infected` event, final autosave with `outcome: infected`, the defeat card ("the hive is lost", New world / Linger). Queen starvation ends the run the same way (`outcome: starved`).
+- **Combat FX** (render-only, UI layer): slash arc, hit burst, blood pool fading over a day, red alert marker over a myrmek that has just seen a predator, a brief fallen silhouette — parameters per the handoff's `SCENES.json → fx`; no corpse entity in the simulation.
 - Balance pass: food spawn vs deaths vs guard coverage; death counters by cause.
 
 **DoD:** on `BUILTIN` alone — no program, no model — the nest survives the first night in **≥50% of seeds** (headless batch); guards visibly intercept and hold gaps; a killed spider feeds the nest; a spider that slips past them and reaches the brood mother ends the run in defeat, with the defeat card shown and the final save written. This is the zero point every later strategy is measured against.
@@ -150,7 +151,7 @@ Scale the prototype to the full simulation: the big chunked world with an active
 **Goal:** three species and guards with doctrine.
 
 **Tasks:**
-- Beetle (slow tank) and lizard (chaser; night extra step every 2nd tick; flees under 30% hp) — displayed as the **tusk brute** and the **winged shade**; per-species target counts; predator energy lifecycle.
+- Beetle (slow tank) and lizard (chaser; night extra step every 2nd tick; flees under 30% hp) — displayed as the **stalker** and the **razorback**; per-species target counts; predator energy lifecycle.
 - Guard tasks `ESCORT` (accompany carrier/harvester groups) and `GUARD_SITE` (patch, food source, road section).
 - Defence-strategy weights in the policy: patrol / gaps / escort / sites — expressible as "fortress", "convoy", "outposts", or adaptive mixes.
 
@@ -357,6 +358,8 @@ Selection at both levels: bodies and strategies. Depends on: v2 (births), v5 (mu
 ---
 
 ## History of changes
+
+**v1.11 (27.09.2026)** — handoff v2.8 in the phases: v0.3/v0.4 consume the generated eight-heading sheets, v0.4 gains the render-only combat FX task, v1.3's display names become stalker and razorback.
 
 **v1.10 (27.09.2026)** — the infection defeat lands in v0.4 (rule, defeat card, DoD line and tests, incl. a defeated run replaying to the same tick) and the defeat event joins v0.6's log.
 

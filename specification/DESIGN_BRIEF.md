@@ -1,6 +1,6 @@
 # Design Brief — Myrmex UI Mockups
 
-Document version 2.0 — 27 September 2026.
+Document version 2.1 — 27 September 2026.
 
 **The canonical design brief now lives with the design itself: [design_handoff_myrmex_ui/DESIGN_BRIEF.md](design_handoff_myrmex_ui/DESIGN_BRIEF.md) (v2.0).** This file is a pointer kept so links and history do not break; do not add content here — amend the handoff brief instead.
 
@@ -22,7 +22,16 @@ Three engineering answers to the handoff's open points:
 2. **Display names**: the creature keeps **myrmek** in the UI (project identity); **brood mother**, **lurker**, **tusk brute**, **winged shade** are adopted; code identifiers stay `queen` / `spider` / `beetle` / `lizard`.
 3. **Canopy fade**: a tree's canopy drops to ~40% opacity while an agent is beneath, so trees never hide the colony.
 
+## Acceptance addendum — handoff v2.8 (27.09.2026)
+
+- **Hybrid art pipeline accepted**: creatures and nest structures are generated painted-raster sheets (`art/`, 8 headings per row, regenerable from `CREATURE_PROMPTS.md`); ground, water, highland, items and markers stay procedural (`sprites/`, `myrmex-art.js`). The generated sheets are the working art; `crag.png` and `decor.png` stay rejected in favour of the procedural versions.
+- **New caste palette and alien vocabulary accepted** (bone-white / saffron / cyan; teal seam-glow, coral muscle, near-black contours). Predators are the **gold-and-blue order**; final display names **lurker / stalker / razorback** replace tusk brute / winged shade everywhere.
+- **Combat FX accepted as render-only** UI-layer sprites (slash, burst, blood pool, alert, brief fallen silhouette). **No corpse entity** enters the simulation, and "carriers clear bodies" is deliberately not adopted — sim deaths still vanish per ARCHITECTURE §Combat.
+- Discrepancies resolved: brood mother is `#B65C8F` + gold per §4 (the `#F0C06A` in §5.12a is stale); builder scale read as **1.3** per HANDOFF.md (the creature README's 1.1 is stale). Known sheet gaps (worker true N/S/E/W, builder back views, stalker headings) are regeneration items, prompts 1–3 and 9–10.
+
 ## History of changes
+
+**v2.1 (27.09.2026)** — the handoff package updated in place to v2.8; added the acceptance addendum (hybrid generated/procedural pipeline, new palette, gold-and-blue predators with final names, render-only combat FX, resolved discrepancies).
 
 **v2.0 (27.09.2026)** — superseded by the designer's consolidated brief in the handoff package; this file becomes a pointer carrying the engineering acceptance of §10 and the three answers (trails from traffic in v1.4, myrmek kept as the UI name, canopy fade).
 

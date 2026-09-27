@@ -1,6 +1,6 @@
 # Vision — Myrmex
 
-Document version 1.11 — 27 September 2026.
+Document version 1.12 — 27 September 2026.
 
 ## In one sentence
 
@@ -68,7 +68,7 @@ The drama is arithmetic, not scripting. These numbers are the intended starting 
 
 ## The look
 
-The logic is cellular; the picture is free. Hand-painted art in the StarCraft-1 tradition, shipped as raster at 128 px per cell — no pixel aesthetic and **no boxes** — presented as a **2:1 isometric world**: the simulation's grid stays square and axis-aligned in data, only the picture rotates (a cell becomes a 128×64 screen diamond, depth-sorted by x+y). Nothing is an extruded tile: highland is jagged crags, the nest wall a run of fleshy mounds, storages are sacs and bone hollows — volume comes from overlapping masses with a lit and a dark facet and a soft cast shadow. Creatures and nest belong to one original **living-hive** species — chitin plates over muscle, bone scythes, amber eyes, creep spreading from the nest — our own silhouettes, nobody else's designs. Every creature is authored once as a small parametric 3D rig and projected into **eight headings** (five painted, three mirrored); roles are per-role colour passes, because tinting a painting flattens it. The ground is one continuous painted surface — biome tints blended by seeded noise, dressed by the render-only decor layer (tufts, pebbles, flowers, mushrooms… and passable **trees**, whose canopy fades when an agent walks beneath) — so the field never reads as a flat green while the simulation stays untouched. Legible from 16 to 64 px per cell; movement is interpolated; night falls as one full-screen tone with warm light at the nest gap (v1).
+The logic is cellular; the picture is free. Hand-painted art in the StarCraft-1 tradition, shipped as raster at 128 px per cell — no pixel aesthetic and **no boxes** — presented as a **2:1 isometric world**: the simulation's grid stays square and axis-aligned in data, only the picture rotates (a cell becomes a 128×64 screen diamond, depth-sorted by x+y). Nothing is an extruded tile: highland is jagged crags, the nest wall a run of fleshy mounds, storages are sacs and bone hollows — volume comes from overlapping masses with a lit and a dark facet and a soft cast shadow. Creatures and nest belong to one original **living-hive** species — chitin plates over muscle, bone scythes, amber eyes, creep spreading from the nest — our own silhouettes, nobody else's designs. Creature and nest-structure art is **generated painted raster** — one prompt per creature and pose, eight headings in a single sheet row; the parametric rig survives as the prompts' body-plan reference — while ground, water, highland, items and markers stay procedural vector. Nothing reads as an Earth insect: faceted chitin shells with a teal seam-glow over hot-coral muscle, bone blades for feet, sensory slits for eyes; roles are colour passes (bone-white worker, saffron builder, cyan guard), because tinting a painting flattens it. The predators are a separate **gold-and-blue order** — gold armour, blue energy lenses, three unrelated body plans. The ground is one continuous painted surface — biome tints blended by seeded noise, dressed by the render-only decor layer (tufts, pebbles, flowers, mushrooms… and passable **trees**, whose canopy fades when an agent walks beneath) — so the field never reads as a flat green while the simulation stays untouched. Legible from 16 to 64 px per cell; movement is interpolated; night falls as one full-screen tone with warm light at the nest gap (v1).
 
 ## Principles
 
@@ -91,7 +91,7 @@ The logic is cellular; the picture is free. Hand-painted art in the StarCraft-1 
 
 ## Glossary
 
-- **Myrmek** — the ant-like creature (from Greek *μύρμηξ*); plural myrmeks. Never called "ant" in prose, and **myrmek is also its UI display name**. Other display names: the queen appears as the **brood mother**; the predators as the **lurker**, **tusk brute** and **winged shade** — code identifiers stay `queen`, `spider`, `beetle`, `lizard`.
+- **Myrmek** — the ant-like creature (from Greek *μύρμηξ*); plural myrmeks. Never called "ant" in prose, and **myrmek is also its UI display name**. Other display names: the queen appears as the **brood mother**; the predators as the **lurker**, **stalker** and **razorback** — code identifiers stay `queen`, `spider`, `beetle`, `lizard`.
 - **Nest** — both the community (queen + myrmeks, in code `Nest`, keyed by `nest_id`) and its base: ground enclosed by walls with storages inside.
 - **Queen** — the stationary coordinator; runs the task board and executes the strategy program. Births from v2.
 - **Gap** — a ground cell left open in the wall ring; the only way in for anyone, including predators. No special "entrance" type exists.
@@ -122,6 +122,8 @@ The logic is cellular; the picture is free. Hand-painted art in the StarCraft-1 
 ---
 
 ## History of changes
+
+**v1.12 (27.09.2026)** — adopted handoff v2.8: generated-raster creature and nest-structure art with the alien vocabulary (teal seam-glow, coral muscle, bone blades), the new caste colours, and the gold-and-blue predator order with final display names lurker / stalker / razorback.
 
 **v1.11 (27.09.2026)** — added the infection defeat to Designed tensions: one predator touch on the brood mother ends the run.
 

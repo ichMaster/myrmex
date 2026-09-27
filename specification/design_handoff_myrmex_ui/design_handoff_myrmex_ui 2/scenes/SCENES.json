@@ -1,0 +1,335 @@
+{
+  "observer-day": {
+    "vx": 105,
+    "vy": 111,
+    "vw": 46,
+    "vh": 46,
+    "px": 32,
+    "phase": "day",
+    "path": true
+  },
+  "observer-night": {
+    "vx": 105,
+    "vy": 111,
+    "vw": 46,
+    "vh": 46,
+    "px": 32,
+    "phase": "night",
+    "gapLights": true
+  },
+  "field-west": {
+    "vx": 92,
+    "vy": 96,
+    "vw": 34,
+    "vh": 30,
+    "px": 32,
+    "phase": "day",
+    "agents": [
+      {
+        "r": "worker",
+        "x": 110,
+        "y": 111,
+        "d": "W",
+        "cargo": "food"
+      },
+      {
+        "r": "worker",
+        "x": 108,
+        "y": 113,
+        "d": "NE"
+      },
+      {
+        "r": "worker",
+        "x": 112,
+        "y": 110,
+        "d": "SW",
+        "cargo": "food"
+      },
+      {
+        "r": "scout",
+        "x": 103,
+        "y": 106,
+        "d": "NW"
+      },
+      {
+        "r": "harvester",
+        "x": 150,
+        "y": 116,
+        "d": "E"
+      },
+      {
+        "r": "carrier",
+        "x": 148,
+        "y": 120,
+        "d": "S",
+        "cargo": "res"
+      }
+    ],
+    "spider": null
+  },
+  "ore-east": {
+    "vx": 136,
+    "vy": 104,
+    "vw": 30,
+    "vh": 28,
+    "px": 32,
+    "phase": "day",
+    "agents": [
+      {
+        "r": "worker",
+        "x": 110,
+        "y": 111,
+        "d": "W",
+        "cargo": "food"
+      },
+      {
+        "r": "worker",
+        "x": 108,
+        "y": 113,
+        "d": "NE"
+      },
+      {
+        "r": "worker",
+        "x": 112,
+        "y": 110,
+        "d": "SW",
+        "cargo": "food"
+      },
+      {
+        "r": "scout",
+        "x": 103,
+        "y": 106,
+        "d": "NW"
+      },
+      {
+        "r": "harvester",
+        "x": 150,
+        "y": 116,
+        "d": "E"
+      },
+      {
+        "r": "carrier",
+        "x": 148,
+        "y": 120,
+        "d": "S",
+        "cargo": "res"
+      }
+    ],
+    "spider": null
+  },
+  "fight-gate-night": {
+    "vx": 116,
+    "vy": 102,
+    "vw": 24,
+    "vh": 22,
+    "px": 40,
+    "phase": "night",
+    "sealed": false,
+    "gapLights": true,
+    "agents": [
+      {
+        "r": "guard",
+        "x": 126,
+        "y": 112,
+        "d": "N"
+      },
+      {
+        "r": "guard",
+        "x": 128,
+        "y": 112,
+        "d": "N"
+      },
+      {
+        "r": "guard",
+        "x": 127,
+        "y": 113,
+        "d": "N",
+        "sel": true
+      },
+      {
+        "r": "worker",
+        "x": 125,
+        "y": 116,
+        "d": "S"
+      },
+      {
+        "r": "worker",
+        "x": 129,
+        "y": 116,
+        "d": "S",
+        "cargo": "food"
+      },
+      {
+        "r": "builder",
+        "x": 127,
+        "y": 117,
+        "d": "S"
+      }
+    ],
+    "spider": {
+      "x": 127,
+      "y": 110,
+      "pose": "lunge",
+      "d": "S"
+    },
+    "fx": [
+      {
+        "t": "slash",
+        "x": 126,
+        "y": 111
+      },
+      {
+        "t": "slash",
+        "x": 128,
+        "y": 111
+      },
+      {
+        "t": "hit",
+        "x": 127,
+        "y": 110
+      },
+      {
+        "t": "alert",
+        "x": 127,
+        "y": 110
+      }
+    ]
+  },
+  "fight-trail-dusk": {
+    "vx": 98,
+    "vy": 100,
+    "vw": 24,
+    "vh": 22,
+    "px": 40,
+    "phase": "dusk",
+    "agents": [
+      {
+        "r": "worker",
+        "x": 108,
+        "y": 112,
+        "d": "SE",
+        "cargo": "food"
+      },
+      {
+        "r": "worker",
+        "x": 106,
+        "y": 114,
+        "d": "E"
+      },
+      {
+        "r": "scout",
+        "x": 104,
+        "y": 108,
+        "d": "NW"
+      },
+      {
+        "r": "guard",
+        "x": 111,
+        "y": 110,
+        "d": "W",
+        "sel": true
+      }
+    ],
+    "spider": null,
+    "predators": [
+      {
+        "t": "lizard",
+        "x": 110,
+        "y": 108,
+        "pose": "run",
+        "d": "SW"
+      },
+      {
+        "t": "lizard",
+        "x": 113,
+        "y": 111,
+        "pose": "flee",
+        "d": "NE"
+      }
+    ],
+    "fx": [
+      {
+        "t": "slash",
+        "x": 111,
+        "y": 109
+      },
+      {
+        "t": "blood",
+        "x": 110,
+        "y": 109
+      },
+      {
+        "t": "alert",
+        "x": 108,
+        "y": 112
+      },
+      {
+        "t": "alert",
+        "x": 106,
+        "y": 114
+      }
+    ]
+  },
+  "siege-east-day": {
+    "vx": 130,
+    "vy": 114,
+    "vw": 24,
+    "vh": 22,
+    "px": 40,
+    "phase": "day",
+    "agents": [
+      {
+        "r": "guard",
+        "x": 140,
+        "y": 125,
+        "d": "E"
+      },
+      {
+        "r": "guard",
+        "x": 140,
+        "y": 127,
+        "d": "E",
+        "sel": true
+      },
+      {
+        "r": "builder",
+        "x": 139,
+        "y": 126,
+        "d": "E"
+      },
+      {
+        "r": "worker",
+        "x": 137,
+        "y": 126,
+        "d": "W"
+      }
+    ],
+    "spider": null,
+    "predators": [
+      {
+        "t": "beetle",
+        "x": 143,
+        "y": 126,
+        "pose": "attack",
+        "d": "W"
+      }
+    ],
+    "fx": [
+      {
+        "t": "hit",
+        "x": 141,
+        "y": 126
+      },
+      {
+        "t": "dead",
+        "x": 142,
+        "y": 128
+      },
+      {
+        "t": "alert",
+        "x": 139,
+        "y": 126
+      }
+    ]
+  }
+}
