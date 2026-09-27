@@ -1,6 +1,6 @@
 # Vision — Myrmex
 
-Document version 1.10 — 27 September 2026.
+Document version 1.11 — 27 September 2026.
 
 ## In one sentence
 
@@ -63,6 +63,7 @@ The drama is arithmetic, not scripting. These numbers are the intended starting 
 - **The food margin is thin.** A hundred myrmeks burn about 110 food units per day; the active zone spawns 120–150. Thirty carriers moving two units over hundred-cell trips supply ~0.3 units per tick — enough, with little to spare. Energy and starvation exist precisely to create this pressure: they make logistics matter and give carriers a purpose.
 - **The night dilemma.** Sealing every gap at dusk makes the nest impregnable — but when the store is below the reserve, work continues in the dark despite the risk. Safety and hunger pull in opposite directions, and the strategy program owns that trade-off.
 - **Defence without cheats.** Nothing stops a predator at a gap except a guard physically standing in it, and nothing gets through a wall — anyone's wall. Whether the nest is a fortress, a convoy system, or a chain of outposts is strategy, not rules.
+- **One touch loses everything.** If a predator reaches the brood mother — any of the eight cells around her — the colony is infected and the run ends in defeat, immediately. Every wall, every gap, every guard exists downstream of this rule: defence is not about losing fewer workers, it is about the untouchable centre.
 - **The world wakes with expansion.** Only the active zone around the nest lives; the rest of the huge map sleeps until scouts reach it. A 2048x2048 world becomes meaningful exactly as fast as the nest's knowledge grows.
 
 ## The look
@@ -121,6 +122,8 @@ The logic is cellular; the picture is free. Hand-painted art in the StarCraft-1 
 ---
 
 ## History of changes
+
+**v1.11 (27.09.2026)** — added the infection defeat to Designed tensions: one predator touch on the brood mother ends the run.
 
 **v1.10 (27.09.2026)** — adopted the design handoff v2.0: 2:1 isometric presentation over the square data grid, hand-painted raster in the StarCraft-1 tradition with per-role colour passes and the eight-heading rig, the no-boxes rule, the living-hive species, the continuous painted ground with passable trees (canopy fade), highland and creep in the glossary, and the UI display names (myrmek kept; brood mother, lurker, tusk brute, winged shade).
 

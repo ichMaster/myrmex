@@ -1,6 +1,6 @@
 # Architecture — Myrmex
 
-Document version 1.18 — 27 September 2026.
+Document version 1.19 — 27 September 2026.
 
 ## Overview
 
@@ -61,7 +61,7 @@ Everything below describes the full v1 system. The **v0 prototype** ([ROADMAP.md
 | **Agents — roles** | Three: **worker** (scout + carrier + harvester in one: carries if there is cargo, mines if a patch is assigned, else takes the frontier), **builder**, **guard**; 40 myrmeks + the queen (22/8/10) | Six specialized roles, ~100 myrmeks, cargo handover between neighbours (v1.2) |
 | **Agents — energy** | Full model: fixed-point energy, hunger thresholds, starvation deaths, cargo drop on death | Nothing |
 | **Agents — predators** | The spider only, with its night multipliers and full state machine | Beetle, lizard, per-species target counts (v1.3) |
-| **Combat** | Full: 8-adjacent damage, stacking attackers, gap crossfire, carcasses as food | Nothing |
+| **Combat** | Full: 8-adjacent damage, stacking attackers, gap crossfire, carcasses as food, **the infection defeat rule** | Nothing |
 | **Nest — knowledge** | Full: per-nest `known` mask, incremental frontier, unknown cells excluded from paths and tasks | Nothing |
 | **Nest — structure** | Walls, storages, gaps, computed interior/capacity, demolition with resource return, night sealing; the build plan is **fixed rings that grow with population** | Traffic-driven planning, `PAVEMENT` and roads (v1.4) |
 | **Queen — tactical** | The task board with `EXPLORE`, `FETCH_FOOD`, `HARVEST`, `BUILD`, `FEED_MYRMEK`, `PATROL`, `HOLD_GAP`, `OPEN_GAP`, `CLOSE_GAP`; ranking, greedy assignment, the first-day plan | `FETCH_PILE`, `DELIVER_RES`, `INTERCEPT`, `PAVE`, `ESCORT`, `GUARD_SITE`; defence-strategy weights (v1.3) |
@@ -232,6 +232,8 @@ A predator is a hunger loop, not a script: it wanders until something edible ent
 | Lizard | Chaser; night extra step every 2nd tick; flees < 30% hp | 1 / 1+ | 8 / 12 | 25 | 5 | 15 / 6 | 6 |
 
 **Combat:** every tick, an agent with an attack value damages an enemy in one of its 8 neighbouring cells; damage stacks across attackers; a predator in a gap is hit from both sides. A worker dies to one predator hit; guards survive several.
+
+**Infection — the defeat rule.** The queen must never be touched. At the **start of the combat phase**, if any predator stands in one of the 8 cells adjacent to the queen, the colony is **infected** and the run ends immediately in **defeat** — no combat resolves that tick. The `infected` event is journaled with the predator id and tick, a final autosave is written with `outcome: infected` in its header, and the UI shows the defeat card ("the hive is lost"; "new world" and "linger" are the ways out — the frozen world stays observable). If the queen starves to death (energy 0), the run ends the same way with `outcome: starved` — the strategy floors exist precisely to demote a failing program long before either happens. These are the only defeats in v0–v1, and they give guards exactly one unforgivable failure: letting anything through to the brood mother.
 
 ## Nest
 
@@ -494,7 +496,7 @@ At 2048x2048: terrain 4 MB + structures 4 MB + knowledge 4 MB and distance field
 
 ## Saves
 
-Since the sim is pure data, saving is serialization: format version, seed and parameters, clock, layer arrays, sparse object/agent dictionaries, nest state (storages, task board, build plan/queue, frontier), the whole strategy state (active mode and program, `memory`, the version journal, and from v1.5 the scorecards, the attempt ledger and the situation with `since_tick` and any observer pin), RNG stream states — `var_to_bytes` into a compressed file (`FileAccess.open_compressed`) beside a small JSON header (version, seed, day, population, date) for slot lists. The body carries **plain types only** — numbers, strings, arrays, dictionaries, packed arrays — and is read back with `bytes_to_var`, **never `bytes_to_var_with_objects`**: a save file can therefore never instantiate a class or execute code, which matters from v4 where saves live on a server and a file of unknown origin can arrive. A contract test asserts the round trip stays object-free. **Saving is automatic**: every dawn (`autosave_ticks` 1120), on exit, and before applying a new strategy version; the last 3 autosaves plus one per simulation day are kept; launch resumes from the latest autosave — "new world" is a deliberate action. Writes run on a background thread from array copies, to a temp name renamed on success, so a crash never corrupts the previous save. Loading rebuilds the render, minimap, and distance field. Backward compatibility across format versions is not guaranteed before v4 (saves move server-side there).
+Since the sim is pure data, saving is serialization: format version, seed and parameters, clock, layer arrays, sparse object/agent dictionaries, nest state (storages, task board, build plan/queue, frontier), the whole strategy state (active mode and program, `memory`, the version journal, and from v1.5 the scorecards, the attempt ledger and the situation with `since_tick` and any observer pin), RNG stream states — `var_to_bytes` into a compressed file (`FileAccess.open_compressed`) beside a small JSON header (version, seed, day, population, date, `outcome: running | infected | starved`) for slot lists. The body carries **plain types only** — numbers, strings, arrays, dictionaries, packed arrays — and is read back with `bytes_to_var`, **never `bytes_to_var_with_objects`**: a save file can therefore never instantiate a class or execute code, which matters from v4 where saves live on a server and a file of unknown origin can arrive. A contract test asserts the round trip stays object-free. **Saving is automatic**: every dawn (`autosave_ticks` 1120), on exit, and before applying a new strategy version; the last 3 autosaves plus one per simulation day are kept; launch resumes from the latest autosave — "new world" is a deliberate action. Writes run on a background thread from array copies, to a temp name renamed on success, so a crash never corrupts the previous save. Loading rebuilds the render, minimap, and distance field. Backward compatibility across format versions is not guaranteed before v4 (saves move server-side there).
 
 ## Error handling and resilience
 
@@ -511,7 +513,7 @@ Since the sim is pure data, saving is serialization: format version, seed and pa
 
 ## Observability
 
-- **Event log**: deaths, patch depletion, predator killed / predator inside, gaps opened/closed, new ring; births from v2.
+- **Event log**: deaths, patch depletion, predator killed / predator inside, gaps opened/closed, new ring, **colony infected — the defeat event**; births from v2.
 - **Statistics**: population by role, deaths by cause, storages, % of map known, predator counts; charts over recent days.
 - **Queen panel**: the current **situation** with what it demands and how long it has held (plus the observer's pin, when set), the current mode and program with fired-branch highlighting from the last cycle, the active policy, the latest scorecard as declared-goal versus actual with its verdict, the promotion/demotion history (including why a version was blacklisted and what the ladder tried next), and in `LLM` mode the version history with change notes and response times, plus "revise now" and "save to library".
 - **Autosave marker**: "saved: day N, time" — the save system is otherwise invisible.
@@ -612,6 +614,8 @@ Decisions still open, each with the current recommendation. When one is settled,
 ---
 
 ## History of changes
+
+**v1.19 (27.09.2026)** — the defeat rule: a predator in any of the queen's eight adjacent cells at the start of the combat phase infects the colony and ends the run at once (journaled `infected` event, final autosave with `outcome: infected`, the defeat card); queen starvation ends the run as `outcome: starved`, closing a previously undefined state. Combat, the v0 table, the save header and the event log carry it.
 
 **v1.18 (27.09.2026)** — adopted the design handoff v2.0 (its §10 accepted in full, with three engineering answers): the presentation becomes 2:1 isometric over the unchanged square data grid (depth sort x+y, inverse projection for clicks; minimap stays square), the ground becomes one painted noise-blended surface, creep is a render-derived field, **`HIGHLAND` joins the terrain enum** with worldgen massifs and a start-not-enclosed guarantee, trees enter the decor layer as passable landmarks with canopy fade, the art pipeline becomes hand-painted raster with per-role colour passes and the eight-heading rig (~60 pieces v0 / ~110 full), and the `QUEEN_CHAMBER` spawns on the cell north of the queen. Engineering answers folded in: dirt trails derive from the v1.4 traffic field (none in v0), the UI keeps **myrmek** as the creature's display name while adopting brood mother / lurker / tusk brute / winged shade, and the canopy fade resolves trees hiding agents.
 

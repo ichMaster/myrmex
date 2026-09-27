@@ -1,6 +1,6 @@
 # Design Brief — Myrmex v0 Prototype Interface
 
-Document version 2.0 — 27 September 2026.
+Document version 2.1 — 27 September 2026.
 
 A self-contained brief for a Claude Design session: mock up **exactly what the v0 prototype's interface will look like** — nothing from later versions. Companion to the canonical [design_handoff_myrmex_ui/DESIGN_BRIEF.md](design_handoff_myrmex_ui/DESIGN_BRIEF.md) (v2.0); where they disagree, the v0 rules here win for these mockups. Shape references: `design_handoff_myrmex_ui/sprites/`, scenes and `myrmex-art.js`.
 
@@ -40,7 +40,7 @@ Design at **1440×900**, world at 32 px/cell in isometric projection. The HUD is
 - **Bottom-left — minimap:** 256×256 well (1 px per cell — the minimap stays **square**: it is a data view, not a projected one), viewport rectangle, click-to-move. No "true map" toggle in v0.
 - **Bottom-centre — time cluster:** pause · 1× · 4× · 16× · single-step (44 px targets) + `● saved · day 2`. **No save button.**
 - **Right rail (320 px):** tabs **Queen | Tools**; Tools = two rows only (**place food** `F`, **release lurker** `S`); the inspector docks below on click, with a 64 px portrait well (selected creature facing SE).
-- **Bottom-right — event log:** last 3 mono lines, expandable: `myrmek starved · worker`, `lurker slain at the gap`, `lurker inside!`, `ore vein depleted`, `gap sealed for the night`, `new ridge begun`.
+- **Bottom-right — event log:** last 3 mono lines, expandable: `myrmek starved · worker`, `lurker slain at the gap`, `lurker inside!`, `ore vein depleted`, `gap sealed for the night`, `new ridge begun`, `colony infected — defeat`.
 
 Not in v0 (do not draw): parameters panel, charts, true-map toggle, gap light, dirt trails, creep roads, tusk brute, winged shade, six roles, named saves.
 
@@ -61,6 +61,11 @@ Header: brood-mother glyph (magenta disc, gold inner ring) + "Queen"; segmented 
 4. **Inspector — both variants** (~480 wide): myrmek with path; cell layers.
 5. **v0 sprite sheet** (~1400×900): ground ×4 tints · water shore/deep · rock · highland (interior/edge/outcrop) · ridge run/corner/end + ghost · digestive sac 0/⅓/⅔/full · bone hollow 0/½/full · brood dome · food 1/3/5 · ore rich/depleted · pile 1/3 · **myrmek 8 headings** in three role passes + cargo · brood mother · lurker (ambush/lunge/eating) · selection ellipse + cell diamond · path/target · decor ×14 incl. tree — on day and night ground, 32 px and a 16 px strip.
 6. **Minimap close-up** (256 shown at 2×): known blob, unknown black, red lurker dot, bone-white myrmek specks, biome tones, viewport rect.
+7. **Defeat card** over the night scene, as specified above.
+
+## The defeat card (v0 form)
+
+A predator touching the brood mother infects the colony — the run ends at once. Overlay: dark veil ~70% over the frozen world; centered panel (~560×320) in the HUD chrome with a creep-and-bone trim: display line **THE HIVE IS LOST**, subline `a lurker reached the brood mother — the colony is infected`, stats line `Day 3 · 2 nights survived · 41 myrmeks`, two buttons — **New world** (primary) and **Linger** (raised; dismisses the card, the frozen world stays observable). Same card with `the brood mother has starved` for the starvation defeat.
 
 ## Anti-patterns — do not draw
 
@@ -73,6 +78,8 @@ Worker/builder/guard separate at 16 px on both day and night ground (lightness l
 ---
 
 ## History of changes
+
+**v2.1 (27.09.2026)** — added the defeat card (infection / starvation variants, New world + Linger), artboard 7 and the defeat event line.
 
 **v2.0 (27.09.2026)** — rewritten to the handoff v2.0 language: isometric 2:1 presentation, hand-painted no-boxes style, living-hive palette finals and display names (myrmek kept; brood mother, lurker), highland/creep/biome ground, eight-heading creatures, IBM Plex HUD recipe, updated artboards and anti-patterns. v0 exclusions extended with dirt trails and creep roads.
 

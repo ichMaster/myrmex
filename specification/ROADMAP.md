@@ -1,6 +1,6 @@
 # Roadmap — Myrmex
 
-Document version 1.9 — 27 September 2026.
+Document version 1.10 — 27 September 2026.
 
 Seven versions, built in order: **v0** prototype "First Night" (headless core, three roles, the spider, sandboxed Lua strategies, the Gemini loop) → **v1** the full nest (big world, six roles, three predators, paving, the full StateView, the arena, full UI) → **v2** births → **v3** replay → **v4** server and clients → **v5** nests at war → **v6** evolution and the genome. Versions are numbered from 0; phases inside a version are numbered `vA.B`. Each phase lists a **Goal**, a short description, a **Tasks** list, and a **Definition of Done (DoD)**, and ships with the automated tests that encode its DoD (see [ARCHITECTURE.md](ARCHITECTURE.md) §Testing).
 
@@ -74,11 +74,12 @@ Agents arrive: worker/builder/guard state machines, the queen's tactical task bo
 **Tasks:**
 - Spider: ambush behaviour, `WANDER`/`HUNT`/`ATTACK`/`EAT`/`REST`, energy-driven hunting, night multipliers (cooldown, eating, vision); spawn ring 60–150 cells, target count; eight-heading frames for its three poses (five painted, three mirrored); displayed in the UI as the **lurker**.
 - Combat: 8-adjacent damage each tick, stacking attackers, gap crossfire; worker one-hit deaths, `FLEE` for workers; carcass → `FOOD` hauled to storage; cargo drop on death.
+- **Infection — the defeat rule**: at the start of the combat phase, a predator in any of the queen's 8 adjacent cells infects the colony and the run ends in defeat at once — journaled `infected` event, final autosave with `outcome: infected`, the defeat card ("the hive is lost", New world / Linger). Queen starvation ends the run the same way (`outcome: starved`).
 - Balance pass: food spawn vs deaths vs guard coverage; death counters by cause.
 
-**DoD:** on `BUILTIN` alone — no program, no model — the nest survives the first night in **≥50% of seeds** (headless batch); guards visibly intercept and hold gaps; a killed spider feeds the nest. This is the zero point every later strategy is measured against.
+**DoD:** on `BUILTIN` alone — no program, no model — the nest survives the first night in **≥50% of seeds** (headless batch); guards visibly intercept and hold gaps; a killed spider feeds the nest; a spider that slips past them and reaches the brood mother ends the run in defeat, with the defeat card shown and the final save written. This is the zero point every later strategy is measured against.
 
-**Tests:** combat resolution and stacking; carcass and cargo-drop rules; night multipliers; the ≥50% survival smoke over a seed batch.
+**Tests:** combat resolution and stacking; carcass and cargo-drop rules; night multipliers; infection triggers exactly at 8-adjacency to the queen at the start of the combat phase and ends the tick early (no combat that tick); a guard standing in the gap prevents it; a defeated run replays to the same defeat tick; queen starvation → `outcome: starved`; the ≥50% survival smoke over a seed batch.
 
 ### v0.5 — The strategy program and the LLM loop
 
@@ -108,7 +109,7 @@ The strategic level over the task board: Lua 5.4 strategies via godot-luaAPI beh
 **Tasks:**
 - Click inspector: myrmek/spider (role, state, energy, hp, task, path drawn on the map), cell (all layers).
 - Interventions: place food (amount), release a spider — applied as commands at tick boundaries.
-- Event log (deaths, patch depleted, spider killed, spider inside, gap opened/closed, new ring); statistics panel (population, food, deaths by cause).
+- Event log (deaths, patch depleted, spider killed, spider inside, **colony infected — defeat**, gap opened/closed, new ring); statistics panel (population, food, deaths by cause).
 
 **DoD:** all three prototype evaluation criteria are assessable: graphics at both zooms with 40 myrmeks at 16x, ≥50% first-night survival without the LLM, and the visible Gemini behaviour change.
 
@@ -356,6 +357,8 @@ Selection at both levels: bodies and strategies. Depends on: v2 (births), v5 (mu
 ---
 
 ## History of changes
+
+**v1.10 (27.09.2026)** — the infection defeat lands in v0.4 (rule, defeat card, DoD line and tests, incl. a defeated run replaying to the same tick) and the defeat event joins v0.6's log.
 
 **v1.9 (27.09.2026)** — the design handoff v2.0 lands in the phases: v0.1 worldgen gains highland massifs with the start-not-enclosed guarantee; v0.2 becomes the isometric renderer (depth-sort and click-projection tests), painted biome ground, ridge run/corner/end walls and the fourteen-piece decor layer with passable trees; v0.3/v0.4 move to eight-heading atlases with per-role sheets and the lurker display name; v1.3 adopts tusk brute / winged shade; v1.4 renders dirt trails from the traffic field; v1.6's ladder becomes 16–64 with the isometric autotiling set.
 
