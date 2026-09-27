@@ -1,6 +1,6 @@
 # Architecture — Myrmex
 
-Document version 1.4 — 27 September 2026.
+Document version 1.5 — 27 September 2026.
 
 ## Overview
 
@@ -43,6 +43,42 @@ flowchart LR
     proxy --> mac
     web -->|"camera rect · commands · chunk requests<br/>(one shared token)"| proxy
 ```
+
+## What v0 implements
+
+Everything below describes the full v1 system. The **v0 prototype** ([ROADMAP.md §v0](ROADMAP.md)) builds a reduced version of exactly this architecture — **not a separate codebase and not a throwaway**: v1 widens v0's scope without rewriting its structure. Read the table as "which parts of the sections that follow exist in the first build".
+
+**Reduced in v0 (scope), per section:**
+
+| Section | In v0 | Deferred |
+|---|---|---|
+| **World model** | 256x256 fixed, all layers present, objects/agents sparse | Sizes to 2048², 64x64 chunks, the active zone (v1.1) — in v0 the whole world is awake |
+| **Time and the tick** | The full seven-phase order, 10 ticks/s, day–dusk–night–dawn with predator night multipliers, `seal_at_night` | Nothing |
+| **Agents — roles** | Three: **worker** (scout + carrier + harvester in one: carries if there is cargo, mines if a patch is assigned, else takes the frontier), **builder**, **guard**; 40 myrmeks + the queen (22/8/10) | Six specialized roles, ~100 myrmeks, cargo handover between neighbours (v1.2) |
+| **Agents — energy** | Full model: fixed-point energy, hunger thresholds, starvation deaths, cargo drop on death | Nothing |
+| **Agents — predators** | The spider only, with its night multipliers and full state machine | Beetle, lizard, per-species target counts (v1.3) |
+| **Combat** | Full: 8-adjacent damage, stacking attackers, gap crossfire, carcasses as food | Nothing |
+| **Nest — knowledge** | Full: per-nest `known` mask, incremental frontier, unknown cells excluded from paths and tasks | Nothing |
+| **Nest — structure** | Walls, storages, gaps, computed interior/capacity, demolition with resource return, night sealing; the build plan is **fixed rings that grow with population** | Traffic-driven planning, `PAVEMENT` and roads (v1.4) |
+| **Queen — tactical** | The task board with `EXPLORE`, `FETCH_FOOD`, `HARVEST`, `BUILD`, `FEED_MYRMEK`, `PATROL`, `HOLD_GAP`, `OPEN_GAP`, `CLOSE_GAP`; ranking, greedy assignment, the first-day plan | `FETCH_PILE`, `DELIVER_RES`, `INTERCEPT`, `PAVE`, `ESCORT`, `GUARD_SITE`; defence-strategy weights (v1.3) |
+| **Queen — strategic** | `StrategyRunner` with the **sandboxed Lua 5.4 runner** (sandbox, instruction limit, dry run), a **tiny `StateView`** (~10 scalars) and **6 policy fields**, version validation and journal, `PROGRAM` + `LLM` modes | The full `StateView` and policy schema, the strategy library and arena (v1.5) |
+| **LLM** | Gemini 3.1 Pro + `MOCK`; writes the program at start, revises after the first night and on "more than three deaths since dawn" | OpenAI-compatible, Anthropic, Ollama providers (v1.5) |
+| **Pathfinding** | Weighted BFS distance field + local `AStarGrid2D`, recomputed **globally over the whole 256² world** | Incremental recomputation scoped to chunks (v1.1) |
+| **Saves** | Serialization of the full state; **one autosave file**, written at dawn and on exit; launch resumes from it | Rotation (3 + one per day), the saved-days list, named slots (v1.6) |
+| **Rendering** | SVG sprites, tile window, `MultiMeshInstance2D` myrmeks with interpolation, `CanvasModulate` day/night; **flat tiles, two zooms (16/32 px)** | Terrain-set autotiling, zooms 8–48, `PointLight2D` at the gap (v1.6) |
+| **UI** | Camera, pause + 1x/4x/16x + step, minimap, click inspector, statistics, event log, queen panel; **two interventions** (place food, release a spider); parameters edited in `.tres` | The live parameters panel, the full inspector, all interventions (v1.6) |
+| **Server / Net** | Not present — one process, `res://app/` | The whole of v4 |
+
+**Not reduced in v0 (invariants).** The prototype cuts features, never the rules that make later versions cheap — each of these is load-bearing from the first commit:
+
+- The simulation is **pure data** in `res://sim/`, with no `Node`, scene-tree or network dependency; view and UI only read it, and observer commands enter at tick boundaries.
+- **Determinism end to end**: one master seed, named RNG streams, integer-only sim arithmetic, agents stepped in id order, the fixed seven-phase tick, journaled LLM answers.
+- **Physical rules**: one agent per cell everywhere, 8-directional movement with Chebyshev radii, walls impassable to all, a gap as a plain ground cell, interior computed by flood fill, demolition returning its resource.
+- **Contracts**: `StateView`, the policy schema, `StrategyRunner`, the task shape, the provider interface and the save format are all pinned by contract tests in v0 — they *grow* additively in v1 rather than changing shape.
+- **The strategy sandbox**: Lua from v0.5, because the prototype is precisely where model-written code first runs inside the process.
+- **Headless first**: `res://sim/` runs and is tested with no rendering (v0.1 ships before any view exists).
+
+Estimated size of the whole prototype: three to four thousand lines of GDScript.
 
 ## Components
 
@@ -432,6 +468,8 @@ Decisions still open, each with the current recommendation. When one is settled,
 ---
 
 ## History of changes
+
+**v1.5 (27.09.2026)** — added the **What v0 implements** section after Overview: a per-section table of what the prototype reduces (world size and no chunks, three roles and 40 myrmeks, the spider only, fixed-ring build plans, the tiny StateView, the single autosave file, flat tiles and two zooms, two interventions, no server) against what it defers and to which phase, plus the list of invariants the prototype does **not** reduce (pure-data sim, determinism, physical rules, contracts pinned by tests, the Lua sandbox, headless-first).
 
 **v1.4 (27.09.2026)** — split the former "Stack and repository layout" into a dedicated **Tech stack** section (a per-layer table: engine, language, strategy runtime, sim data structures, RNG, pathfinding, persistence, rendering, art, config data, LLM, tests, networking and deployment, plus an explicit list of what is deliberately not used) and a **Repository layout** section holding the tree. The tree is now file-by-file and gained the directories the specs had implied but never listed: `res://addons/` (the two vendored addons), `res://strategies/` (shipped programs, incl. `MOCK` inputs), `res://tools/` (headless entry points), `res://sim/policy_schema.gd`, plus the non-`res://` roots `scripts/`, `deploy/`, `.github/workflows/` and the existing `specification/`, `.claude/skills/`, `codegen/`.
 
