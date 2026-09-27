@@ -10,7 +10,7 @@ Myrmex is at the specification stage: there is no code yet. Spec-driven developm
 - [specification/ARCHITECTURE.md](specification/ARCHITECTURE.md) — components, world/agent/nest model, the queen's two-level brain, contracts, resilience, layout, testing.
 - [specification/ROADMAP.md](specification/ROADMAP.md) — versions v0–v6 and phases `vA.B`, each with Goal, Tasks, DoD, and Tests.
 
-These three files are the source of truth. When a decision changes, update every one of them it touches and keep them consistent. [specification/history/](specification/history/) holds the retired initial concept (English v0.20 and the Ukrainian original v0.19) — kept for history as the initial vision, frozen: never update, extend, or derive requirements from those files.
+These three files are the source of truth. [specification/DESIGN_BRIEF.md](specification/DESIGN_BRIEF.md) is derived material — the brief and object/UI specification for the mockup work in the Claude Design canvas; it follows the three and never overrides them. When a decision changes, update every one of them it touches and keep them consistent. [specification/history/](specification/history/) holds the retired initial concept (English v0.20 and the Ukrainian original v0.19) — kept for history as the initial vision, frozen: never update, extend, or derive requirements from those files.
 
 No build, lint, or test commands exist yet. The target stack is Godot 4.x (4.3+) / GDScript with headless tests (gdUnit4); record the real commands here (run, headless run, test suite, single test) as soon as the Godot project exists.
 
