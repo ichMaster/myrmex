@@ -1,6 +1,6 @@
 # Vision — Myrmex
 
-Document version 1.0 — 27 September 2026.
+Document version 1.1 — 27 September 2026.
 
 ## In one sentence
 
@@ -12,11 +12,53 @@ A living nest in a large 2D cell world. About a hundred myrmeks in six roles (sc
 
 The queen's mind has two levels. The tactical level is an algorithmic task board that turns the nest's state into assigned tasks every planning cycle. Above it sits a **strategy program** — real code with a `plan(state) -> policy` function and persistent memory — that the queen executes herself in microseconds. In `LLM` mode a language model writes that program at the start and revises it by results (deaths, food income, nights without losses); every version is validated, journaled, and replayable. Strategies live in a library and can be raced against each other on identical seeds — a strategy arena.
 
-The observer gets a StarCraft-style camera and minimap, an inspector, live parameter sliders, intervention tools (drop food, release a predator, reveal terrain), and automatic saves. The first release is a single native macOS app; later the simulation moves to a headless home server with web clients, then to several warring nests, births, evolution, and the strategy program as an inheritable genome.
+The observer gets a StarCraft-style camera and minimap, an inspector, live parameter sliders, intervention tools (drop food, release a predator, reveal terrain), and automatic saves. The first release is a single native macOS app; later the simulation moves to a headless home server with web clients, then to several warring nests, births, evolution, and the strategy program as an inheritable genome. Evolution then runs at two levels: myrmek bodies mutate at birth, while queen strategy programs mutate through LLM revision and arena selection — the lines whose nests survive to swarm are the ones that persist and multiply.
 
 ## For whom
 
 A private research-and-observation project for its author, and later a close circle of observers over a home server — not a commercial game and not a public service. Two interests drive it: watching a small ecosystem live by its own logic, and experimenting with LLM-written strategies against human-written ones on the arena.
+
+## The strategy is a program
+
+"Strategy" here is not a metaphor and not a bag of tuned weights — it is code the queen executes herself on every planning cycle, in microseconds, with a `memory` that survives between calls. It can be read, diffed, edited by hand, stored in a library, raced on the arena, and — later — inherited by a daughter queen as a genome. A whole strategy looks like this:
+
+```lua
+memory = memory or { lost_last_day = 0 }
+
+function plan(s)
+  local p = defaults()
+  if s.phase == "dusk" and not s.ring_closed then
+    p.build_priority = "ring"; p.ring_radius = 5
+  end
+  if s.predators_within(12) >= 1 then
+    p.guards_at_gaps = 0.8; p.seal_gaps = true
+  end
+  if s.food_store < s.population * 0.3 then
+    p.weight_food = 2.0; p.workers_harvest_share = 0.2
+  end
+  if s.deaths_since_dawn > 3 then
+    memory.lost_last_day = s.deaths_since_dawn
+    p.request_revision = true
+  end
+  return p
+end
+```
+
+It sees only what the nest knows (`s` is the `StateView`), it returns only a policy (`p`), and it can ask for its own revision (`request_revision`) — which is how a program written by an LLM asks its author to look at the results and rewrite it. Everything between planning cycles — every task, every myrmek — is handled by the algorithmic tactical level, for free.
+
+## Designed tensions
+
+The drama is arithmetic, not scripting. These numbers are the intended starting point, kept tunable:
+
+- **The first night is winnable, barely.** A wall ring of radius 5 is about 40 walls — 40 resources — with interior room for roughly 70 of the 100 myrmeks. Twenty harvesters mine that much in under half a day, so the walls close before dusk *if* the patch is near; whoever doesn't fit inside sleeps by the gap under guard. The generator guarantees a hard-but-possible day one: two patches and ~20 food within 30 cells.
+- **The food margin is thin.** A hundred myrmeks burn about 110 food units per day; the active zone spawns 120–150. Thirty carriers moving two units over hundred-cell trips supply ~0.3 units per tick — enough, with little to spare. Energy and starvation exist precisely to create this pressure: they make logistics matter and give carriers a purpose.
+- **The night dilemma.** Sealing every gap at dusk makes the nest impregnable — but when the store is below the reserve, work continues in the dark despite the risk. Safety and hunger pull in opposite directions, and the strategy program owns that trade-off.
+- **Defence without cheats.** Nothing stops a predator at a gap except a guard physically standing in it, and nothing gets through a wall — anyone's wall. Whether the nest is a fortress, a convoy system, or a chain of outposts is strategy, not rules.
+- **The world wakes with expansion.** Only the active zone around the nest lives; the rest of the huge map sleeps until scouts reach it. A 2048x2048 world becomes meaningful exactly as fast as the nest's knowledge grows.
+
+## The look
+
+The logic is cellular; the picture is free. Vector art — simple shapes, soft gradients and shadows, deliberately no pixel aesthetic — from a small SVG set (a myrmek, three predators, terrain, structures, a few markers) that one person can draw by hand or generate. Sprites stay sharp from 8 to 48 px per cell; roles read as tints on one myrmek shape; movement is interpolated so the cell-by-cell logic looks alive; night falls as a smooth tone shift with warm light at the nest gap.
 
 ## Principles
 
@@ -63,5 +105,7 @@ A private research-and-observation project for its author, and later a close cir
 ---
 
 ## History of changes
+
+**v1.1 (27.09.2026)** — restored vision material from the concept that Architecture and Roadmap do not carry: the strategy-program example and its meaning (The strategy is a program), the first-night math, food margin, night dilemma, no-cheat defence and the waking world (Designed tensions), the visual direction (The look), and evolution framed as two-level selection (What we are building).
 
 **v1.0 (27.09.2026)** — initial version, derived from the retired concept v0.20 ([history/](history/)).
