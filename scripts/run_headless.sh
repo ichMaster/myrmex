@@ -11,4 +11,10 @@ if [ -z "${GODOT_BIN}" ] || [ ! -x "$(command -v "${GODOT_BIN}")" ]; then
   exit 2
 fi
 
+# Fresh checkout: without the .godot import cache the global class names
+# (Sim, SimSave, ...) do not resolve and Godot still exits 0 — import once.
+if [ ! -d .godot ]; then
+  "${GODOT_BIN}" --headless --path . --import >/dev/null 2>&1 || true
+fi
+
 exec "${GODOT_BIN}" --headless --path . --script res://tools/run_sim.gd -- "$@"
