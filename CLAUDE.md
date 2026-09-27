@@ -4,30 +4,33 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Current state
 
-Myrmex is at the concept stage: there is no code yet, only the specification in [specification/myrmex-concept-v0.20.md](specification/myrmex-concept-v0.20.md). No build, lint or test commands exist yet. The spec is the source of truth; when implementing, follow its section numbers and parameter names.
+Myrmex is at the specification stage: there is no code yet. Spec-driven development lives in exactly three files in [specification/](specification/):
 
-## Spec conventions
+- [specification/VISION.md](specification/VISION.md) — what is being built, for whom, principles, non-goals, glossary.
+- [specification/ARCHITECTURE.md](specification/ARCHITECTURE.md) — components, world/agent/nest model, the queen's two-level brain, contracts, resilience, layout, testing.
+- [specification/ROADMAP.md](specification/ROADMAP.md) — versions v0–v6 and phases `vA.B`, each with Goal, Tasks, DoD, and Tests.
 
-- The spec is versioned by filename (`myrmex-concept-vX.Y.md`). When changing it, bump the version in the header and filename and add an entry at the top of section 14 (history of changes), listing the affected section numbers in parentheses, in the existing style. The spec language is English. The Ukrainian original, [specification/myrmex-concept-v0.19-UA.md](specification/myrmex-concept-v0.19-UA.md), is kept for history, frozen at v0.19 — never update it.
+These three files are the source of truth. When a decision changes, update every one of them it touches and keep them consistent. [specification/history/](specification/history/) holds the retired initial concept (English v0.20 and the Ukrainian original v0.19) — kept for history as the initial vision, frozen: never update, extend, or derive requirements from those files.
+
+No build, lint, or test commands exist yet. The target stack is Godot 4.x (4.3+) / GDScript with headless tests (gdUnit4 or GUT); record the real commands here (run, headless run, test suite, single test) as soon as the Godot project exists.
+
+## Conventions
+
 - Terminology is fixed: the creature is a **myrmek** (never "ant" in prose), the base/community is the **nest** (never "colony" or "anthill"). Code identifiers use `nest_id`, `myrmek.gd`, `FEED_MYRMEK`.
-- Section 13 (open questions) is currently empty; new questions go there.
+- Build in roadmap order: take the next phase, implement to its DoD, and ship its tests with it. Roadmap phase `vA.B` maps to semver `A.B.0`; never bump a version without explicit confirmation.
+- Defaults are data, not constants: parameter defaults belong in `res://data/*.tres` Resources (the table in ARCHITECTURE.md §Configuration), editable live from the parameters panel.
+- No paid API calls in tests: the LLM is always the `MOCK` provider there.
 
-## What is being built
+## Architectural invariants
 
-A 2D cellular simulation of an autonomous myrmek nest in **Godot 4.3+ / GDScript**. v1 is a single native macOS app (sim + render in one process); a headless Linux server with web client is planned for v1.3. The first milestone is prototype v0 "Перша ніч" (section 11): 256x256 world, three roles (worker, builder, guard), 40 myrmeks, spider only, GDScript strategy, `PROGRAM`/`LLM` queen modes with Gemini 3.1 Pro and `MOCK`. Iteration order is in section 11.4 — iteration 1 is headless sim + worldgen with console stats and single-file autosave.
+ARCHITECTURE.md is the authoritative statement; these must hold from the first line of code, including in the v0 prototype:
 
-## Architectural invariants (from the spec)
-
-These must hold from the first line of code, including in the prototype:
-
-- **Simulation is pure data, no `Node` dependency** (`res://sim/`). State lives in packed arrays per layer (terrain, structure, knowledge) plus sparse dictionaries for objects and agents. Rendering (`res://view/`, `res://ui/`) only reads state. This enables headless tests, save = serialization, and the later server/client split without rewriting the sim.
-- **Determinism**: one seed for world and sim, single seeded RNG (`rng.gd`), discrete ticks (base 10/s), agents processed in id order, LLM responses logged so runs replay without re-calling the model.
-- **Fixed per-tick phase order** (section 4): environment → queen planning (every `N_plan` ticks) → myrmeks → predators → combat/deaths → knowledge update → render sync.
-- **One agent per cell everywhere**, including inside the nest; nest capacity = count of passable interior cells.
-- **Walls are impassable to everyone.** There is no "entrance" type: a gap is just a ground cell left open in the wall ring. "Inside" is computed by flood fill from the queen chamber, not stored.
-- **Fog of war**: unknown cells don't exist for the nest — no paths or tasks there. Frontier is maintained incrementally.
-- **Two-level queen brain**: tactical level (algorithmic task board, assigns every task) and strategic level (a program with `plan(s) -> policy` plus persistent `memory`). The strategy only sees a `StateView` (copied scalars + engine-side helper functions like `predators_within(r)`), never the `World` object, and only returns a policy dictionary that is schema- and bounds-checked. **The LLM never controls individual myrmeks** — it only writes/revises the strategy program, asynchronously, while the current version keeps running. Strategy language is hidden behind the `StrategyRunner` interface (GDScript loaded at runtime in the prototype, sandboxed Lua 5.4 via godot-luaAPI in v1).
-- **Pathfinding**: no global A*. A weighted BFS distance field to the nest over known passable cells (home = gradient descent), plus on-demand local `AStarGrid2D` in a bounding box with 16-cell margin.
-- **Saves**: `var_to_bytes` into a compressed file with a small JSON header; written on a background thread from array copies, to a temp name then renamed. Autosave on every dawn, on exit, and before applying a new strategy version; the game resumes from the latest autosave on launch.
-
-The planned file layout under `res://` is in section 9; default parameters are in section 10 and belong in `res://data/*.tres` Resources rather than hard-coded constants.
+- **The simulation is pure data** in `res://sim/`, no `Node` dependency; rendering and UI only read state. Headless runs (tests, arena, later the server) are first-class.
+- **Determinism end to end**: one seed, a single seeded RNG, discrete ticks, agents processed in id order, observer commands applied at tick boundaries, LLM responses journaled — every run replays exactly.
+- **Fixed per-tick phase order**: environment → queen planning (every `N_plan` ticks) → myrmeks → predators → combat/deaths → knowledge update → render sync.
+- **Physical rules**: at most one agent per cell everywhere; 8-directional movement with uniform cost (Chebyshev radii); walls impassable to everyone; a gap is just an open ground cell; the nest interior is computed by flood fill from the queen chamber, never stored; a demolished structure returns its resource; carried units drop on death.
+- **Fog of war**: unknown cells do not exist for the nest — no paths, no tasks; known-but-unreachable cells are never task targets.
+- **Two-level queen brain**: the algorithmic task board (tactics) under a strategy program `plan(s) -> policy` with persistent `memory` (strategy), behind the `StrategyRunner` seam (GDScript runner in the prototype, sandboxed Lua from v1.5). The strategy sees only `StateView` — copied scalars plus engine-side helpers — never the `World`; returned policies are schema- and bounds-checked; a version that fails validation is discarded while the previous one keeps running.
+- **The LLM never controls an individual myrmek.** It only writes and revises the strategy program — asynchronously, rate-limited, every version validated and journaled.
+- **Pathfinding**: a weighted BFS distance field over known passable cells plus an on-demand local `AStarGrid2D`; no global A*.
+- **Saves are automatic and atomic**: serialization of the pure-data state on a background thread from array copies, temp file then rename; autosave at dawn, on exit, and before a new strategy version; launch resumes from the latest autosave.
