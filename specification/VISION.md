@@ -1,6 +1,6 @@
 # Vision — Myrmex
 
-Document version 1.8 — 27 September 2026.
+Document version 1.9 — 27 September 2026.
 
 ## In one sentence
 
@@ -67,7 +67,7 @@ The drama is arithmetic, not scripting. These numbers are the intended starting 
 
 ## The look
 
-The logic is cellular; the picture is free. Vector art — simple shapes, soft gradients and shadows, deliberately no pixel aesthetic — viewed **straight from above**: pure top-down, no isometric or StarCraft-style pseudo-3D three-quarter view, which is precisely what lets one silhouette simply rotate toward its heading instead of needing directional frames — from a small SVG set (a myrmek, three predators, terrain, structures, a few markers) that one person can draw by hand or generate. Sprites stay sharp from 8 to 48 px per cell; roles read as tints on one myrmek shape; movement is interpolated so the cell-by-cell logic looks alive; the ground is dressed by a render-only **decor layer** — grass tufts, pebbles, flowers, dry patches, seeded from the world hash — so the field never reads as a flat green while the simulation stays untouched (decor is under-agent scale: nothing looks blocking that is not); night falls as a smooth tone shift with warm light at the nest gap.
+The logic is cellular; the picture is free. Vector art — simple shapes, soft gradients and shadows, deliberately no pixel aesthetic — in a **three-quarter RTS view**, the StarCraft feel: a high-angle camera over an axis-aligned **square** cell grid (never a diamond-isometric one, never a 3D camera — the volume lives in the sprites). Walls, rocks, storages and the queen's dome are drawn with a top face and a darker front face, cast soft shadows and overlap the cell above, Y-sorted; the ground plane stays a flat grid. Agents are **directional frames** — five per pose (N, NE, E, SE, S), the west side mirrored — still one myrmek silhouette for every role, tinted, so the set stays drawable by one person. Sprites stay sharp from 8 to 48 px per cell; movement is interpolated so the cell-by-cell logic looks alive; the ground is dressed by a render-only **decor layer** — grass tufts, pebbles, flowers, dry patches, seeded from the world hash — so the field never reads as a flat green while the simulation stays untouched (decor is under-agent scale: nothing looks blocking that is not); night falls as a smooth tone shift with warm light at the nest gap.
 
 ## Principles
 
@@ -119,6 +119,8 @@ The logic is cellular; the picture is free. Vector art — simple shapes, soft g
 ---
 
 ## History of changes
+
+**v1.9 (27.09.2026)** — the projection decision reversed by the author after side-by-side mockups: the look is now the ¾ RTS view (sprite volume on an axis-aligned square grid, directional agent frames), replacing pure top-down; diamond isometric and true 3D remain excluded.
 
 **v1.8 (27.09.2026)** — added the render-only decor layer to The look: seed-hashed ground dressing for variety, invisible to the simulation.
 

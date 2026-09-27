@@ -1,6 +1,6 @@
 # Architecture — Myrmex
 
-Document version 1.16 — 27 September 2026.
+Document version 1.17 — 27 September 2026.
 
 ## Overview
 
@@ -99,7 +99,7 @@ Estimated size of the whole prototype: three to four thousand lines of GDScript.
 - **Spawner** (`spawner.gd`). Food, resource regeneration, predator population — active zone only.
 - **RNG** (`rng.gd`). Named seeded streams (worldgen, spawner, combat, strategy, interventions), all derived from the master seed; every random draw goes through one of them.
 - **Save** (`save.gd`). Serialization, autosave, slots. See §Saves.
-- **View** (`res://view/`). Tile-window renderer, MultiMesh agents, minimap, day/night modulation, and the **decor layer**: render-only ground dressing (grass tufts, pebbles, flowers, dry patches, moss by water) placed by `hash(world_seed, cell)` on ground cells (~1 per 5) — deterministic, absent from sim state, saves and the minimap, and strictly under-agent scale so nothing looks blocking that is not. Reads state, never writes it.
+- **View** (`res://view/`). Tile-window renderer in the ¾ RTS view (Y-sort for tall sprites), MultiMesh agents with per-instance directional-frame selection, minimap, day/night modulation, and the **decor layer**: render-only ground dressing (grass tufts, pebbles, flowers, dry patches, moss by water) placed by `hash(world_seed, cell)` on ground cells (~1 per 5) — deterministic, absent from sim state, saves and the minimap, and strictly under-agent scale so nothing looks blocking that is not. Reads state, never writes it.
 - **UI** (`res://ui/`). HUD, inspector, parameter panel, statistics, intervention tools, queen panel.
 - **Server / Client / Net** (`res://server/`, `res://client/`, `res://net/`, v4). Headless tick loop with connected observers; snapshot-plus-deltas protocol. See ROADMAP v4.
 
@@ -531,8 +531,8 @@ Defaults are data (`res://data/*.tres` — `roles.tres`, `predators.tres`, `sim_
 | Randomness | `RandomNumberGenerator`, named streams | worldgen · spawner · combat · strategy · interventions, each derived from the master seed (`rng.gd`) |
 | Pathfinding | Hand-written weighted BFS + `AStarGrid2D` | Distance field for the global case, engine A* on a bounded rectangle for the local one — §Pathfinding |
 | Persistence | `var_to_bytes` + `FileAccess.open_compressed`, JSON header | Plain types only (never `*_with_objects`), background-thread writes, temp-then-rename — §Saves |
-| Rendering | `TileMapLayer` tile window · `MultiMeshInstance2D` (myrmeks) · `AnimatedSprite2D` (predators) · `Sprite2D` (objects) · `CanvasModulate` + `PointLight2D` (day/night) | Only a ~128x96 window around the camera is filled; myrmek positions interpolate between ticks so cell-stepping logic looks continuous; a seed-hashed, render-only decor layer dresses ground cells |
-| Art | **SVG**, rasterized at import (128 px/cell, mipmaps), tinted via `modulate` | Small hand-drawable set; sharp from 8 to 48 px per cell; role/state/phase are colour, not extra assets |
+| Rendering | **¾ RTS view on an axis-aligned square grid** (never diamond isometric): `TileMapLayer` tile window with **Y-sort** · `MultiMeshInstance2D` (myrmeks — per-instance pick from a five-direction frame atlas via a small shader) · `AnimatedSprite2D` (predators, directional states) · `Sprite2D` (objects) · `CanvasModulate` + `PointLight2D` (day/night) | Tall sprites (walls, rocks, the dome) carry a top and a front face and overlap the cell above, Y-sorted; the logical grid and every coordinate stay square. Only a ~128x96 window around the camera is filled; myrmek positions interpolate between ticks; a seed-hashed, render-only decor layer dresses ground cells |
+| Art | **SVG**, rasterized at import (128 px/cell, mipmaps), tinted via `modulate` | Sharp from 8 to 48 px per cell; role and day phase are colour, **direction is frames** (five per pose, west mirrored). The ¾ view grows the set to ~50 pieces for v0 and ~90 for the full game — the accepted price of the look; each piece stays simple |
 | Config data | Godot `Resource` `.tres` files | `roles.tres`, `predators.tres`, `sim_params.tres` — defaults are data, editable live from the parameters panel |
 | LLM | **Gemini 3.1 Pro** (Google AI API) via `HTTPRequest`, behind an abstracted provider seam | Alongside: OpenAI-compatible, Anthropic, local Ollama, and `MOCK` (reads a program from a file) — the only provider used in tests. Async; keys in a gitignored `.env` loaded into the environment (§Security), server-side only from v4 |
 | Tests | **gdUnit4**, headless | `scripts/test.sh` is the canonical gate: unit, contract, determinism, strategy-safety, balance smoke. No paid API calls, ever |
@@ -612,6 +612,8 @@ Decisions still open, each with the current recommendation. When one is settled,
 ---
 
 ## History of changes
+
+**v1.17 (27.09.2026)** — the projection flipped to the ¾ RTS view by the author's decision: Y-sort and top+front faces for tall sprites, five-direction frame atlases for agents (MultiMesh per-instance selection via a small shader), the square axis-aligned grid kept — diamond isometric and 3D cameras excluded. The simulation is untouched; View, the Rendering and Art rows of the Tech stack carry the change.
 
 **v1.16 (27.09.2026)** — added the decor layer to the View component and the Tech stack rendering row: render-only ground dressing placed by `hash(world_seed, cell)`, deterministic, absent from sim state, saves and the minimap, under-agent scale only.
 
