@@ -104,7 +104,7 @@ static func stats_line(sim: Sim) -> String:
 		reserves += int(sim.world.patches[patch_id]["reserve"])
 	return "day %d · tick %d · %s · food %d · reserves %d · saves %d" % [
 		sim.clock.day(), sim.clock.tick, sim.clock.phase_name(),
-		food_items, reserves, sim.saves_written,
+		food_items, reserves, sim.dawn_saves,
 	]
 
 

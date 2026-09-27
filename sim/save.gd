@@ -58,6 +58,8 @@ static func snapshot(sim: Sim) -> Dictionary:
 		"params": _params_snapshot(sim.params),
 		"clock": sim.clock.export_state(),
 		"rng": sim.rng.export_state(),
+		"dawn_saves": sim.dawn_saves,
+		"last_autosave_tick": sim.last_autosave_tick,
 		"outcome": OUTCOME_RUNNING,
 		"world": {
 			"size": world.size,
@@ -162,6 +164,8 @@ static func restore(snapshot_data: Dictionary) -> Sim:
 	var sim := Sim.new(int(snapshot_data["seed"]), params, false)
 	sim.clock.import_state(snapshot_data["clock"])
 	sim.rng.import_state(snapshot_data["rng"])
+	sim.dawn_saves = int(snapshot_data.get("dawn_saves", 0))
+	sim.last_autosave_tick = int(snapshot_data.get("last_autosave_tick", -1))
 
 	var world_data: Dictionary = snapshot_data["world"]
 	var world := SimWorld.new(int(world_data["size"]))

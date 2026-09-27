@@ -93,7 +93,41 @@ func test_interrupt_and_resume_equals_uninterrupted() -> void:
 
 	assert_int(resumed.clock.tick).is_equal(900)
 	assert_str(RunSim.hash_line(resumed)).is_equal(RunSim.hash_line(uninterrupted))
-	# The resumed tail reports the same world the uninterrupted run reached.
-	assert_str(tail[tail.size() - 1]).is_equal(
-		RunSim.stats_line(uninterrupted).replace(
-			"saves %d" % uninterrupted.saves_written, "saves %d" % resumed.saves_written))
+	# The resumed tail reports exactly the line the uninterrupted run
+	# reached — including the saves field (code review #2).
+	assert_str(tail[tail.size() - 1]).is_equal(RunSim.stats_line(uninterrupted))
+
+
+func test_resume_at_dawn_boundary_no_duplicate_save() -> void:
+	# Regression (code review #2): a run killed right after the dawn
+	# autosave used to re-save that dawn on resume and reset the saves
+	# counter, so the resumed stats trace diverged from the uninterrupted one.
+	var save_a := "user://test_dawn_a.save"
+	var save_b := "user://test_dawn_b.save"
+	for path in [save_a, save_b, "user://test_dawn_a.json", "user://test_dawn_b.json"]:
+		if FileAccess.file_exists(path):
+			DirAccess.remove_absolute(path)
+
+	var uninterrupted := Sim.new(2026, _params())
+	uninterrupted.autosave_path = save_a
+	for i in 1200:
+		uninterrupted.step()
+	assert_int(uninterrupted.dawn_saves).is_equal(1)
+
+	# Twin killed mid-tick 1060, right after the dawn write: the dawn
+	# autosave file itself is the state we resume from.
+	var doomed := Sim.new(2026, _params())
+	doomed.autosave_path = save_b
+	for i in 1061:
+		doomed.step()
+	var resumed := SimSave.restore(SimSave.read_snapshot(save_b))
+	resumed.autosave_path = save_b
+	assert_int(resumed.clock.tick).is_equal(1060)
+	assert_int(resumed.dawn_saves).is_equal(1)
+	while resumed.clock.tick < 1200:
+		resumed.step()
+
+	# No duplicate dawn save, and the stats line matches to the letter.
+	assert_int(resumed.dawn_saves).is_equal(1)
+	assert_str(RunSim.stats_line(resumed)).is_equal(RunSim.stats_line(uninterrupted))
+	assert_str(RunSim.hash_line(resumed)).is_equal(RunSim.hash_line(uninterrupted))

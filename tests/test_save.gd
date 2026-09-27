@@ -97,11 +97,15 @@ func test_dawn_trigger_writes_once_per_day() -> void:
 	# Two full days: dawn edges at ticks 1060 and 2180 only.
 	for i in 2181:
 		sim.step()
-	assert_int(sim.saves_written).is_equal(2)
+	assert_int(sim.dawn_saves).is_equal(2)
 	assert_bool(SimSave.save_exists("user://test_dawn.save")).is_true()
 	# The autosaved file resumes: it holds the tick-2180 boundary state.
 	var resumed := SimSave.restore(SimSave.read_snapshot("user://test_dawn.save"))
 	assert_int(resumed.clock.tick).is_equal(2180)
+	# The dawn file already counts the dawn that wrote it and carries its
+	# stamp, so the resumed run does not save that dawn twice.
+	assert_int(resumed.dawn_saves).is_equal(2)
+	assert_int(resumed.last_autosave_tick).is_equal(2180)
 
 
 func test_in_memory_snapshot_is_isolated() -> void:

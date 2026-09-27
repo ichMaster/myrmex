@@ -24,9 +24,14 @@ var last_step_trace := PackedStringArray()
 
 ## Autosave wiring (v0: one file, no rotation). The dawn edge writes the
 ## tick-boundary state; save_now() serves the runner's shutdown path.
+## dawn_saves and last_autosave_tick persist in the save file — exit saves
+## are not counted, so a resumed run's stats stay identical to an
+## uninterrupted one — and neither field enters state_hash(): they are I/O
+## metadata and never influence sim evolution.
 var autosave_enabled := true
 var autosave_path: String = SimSave.SAVE_PATH
-var saves_written := 0
+var dawn_saves := 0
+var last_autosave_tick := -1
 
 
 func _init(seed_value: int, params_in: SimParams, generate_world := true) -> void:
@@ -46,8 +51,8 @@ func _init(seed_value: int, params_in: SimParams, generate_world := true) -> voi
 ## tick-boundary state — a resumed run processes this tick exactly like the
 ## uninterrupted one.
 func step() -> void:
-	if autosave_enabled and clock.is_dawn_tick():
-		save_now()
+	if autosave_enabled and clock.is_dawn_tick() and last_autosave_tick != clock.tick:
+		save_now(true)
 
 	last_step_trace = PackedStringArray()
 
@@ -72,10 +77,18 @@ func _phase(phase_name: String) -> void:
 
 
 ## Writes the autosave right now — the dawn edge and the shutdown path both
-## land here.
-func save_now() -> void:
-	if SimSave.write(self, autosave_path):
-		saves_written += 1
+## land here. A dawn save stamps its tick and counts itself *before*
+## writing, so the file it produces already knows this dawn is done — a
+## run killed right after it resumes without a duplicate save.
+func save_now(is_dawn := false) -> void:
+	var previous_count := dawn_saves
+	var previous_tick := last_autosave_tick
+	if is_dawn:
+		dawn_saves += 1
+		last_autosave_tick = clock.tick
+	if not SimSave.write(self, autosave_path):
+		dawn_saves = previous_count
+		last_autosave_tick = previous_tick
 
 
 ## Deterministic hash over the full sim state: world layers, clock position
