@@ -1,6 +1,6 @@
 # Vision — Myrmex
 
-Document version 1.6 — 27 September 2026.
+Document version 1.7 — 27 September 2026.
 
 ## In one sentence
 
@@ -67,7 +67,7 @@ The drama is arithmetic, not scripting. These numbers are the intended starting 
 
 ## The look
 
-The logic is cellular; the picture is free. Vector art — simple shapes, soft gradients and shadows, deliberately no pixel aesthetic — from a small SVG set (a myrmek, three predators, terrain, structures, a few markers) that one person can draw by hand or generate. Sprites stay sharp from 8 to 48 px per cell; roles read as tints on one myrmek shape; movement is interpolated so the cell-by-cell logic looks alive; night falls as a smooth tone shift with warm light at the nest gap.
+The logic is cellular; the picture is free. Vector art — simple shapes, soft gradients and shadows, deliberately no pixel aesthetic — viewed **straight from above**: pure top-down, no isometric or StarCraft-style pseudo-3D three-quarter view, which is precisely what lets one silhouette simply rotate toward its heading instead of needing directional frames — from a small SVG set (a myrmek, three predators, terrain, structures, a few markers) that one person can draw by hand or generate. Sprites stay sharp from 8 to 48 px per cell; roles read as tints on one myrmek shape; movement is interpolated so the cell-by-cell logic looks alive; night falls as a smooth tone shift with warm light at the nest gap.
 
 ## Principles
 
@@ -119,6 +119,8 @@ The logic is cellular; the picture is free. Vector art — simple shapes, soft g
 ---
 
 ## History of changes
+
+**v1.7 (27.09.2026)** — pinned the projection in The look: pure top-down, no isometric/pseudo-3D, as the consequence of rotation-based rendering and the one-silhouette rule.
 
 **v1.6 (27.09.2026)** — goals became the closed list of six covered by every strategy to a degree (normalized to sum to 1), with fit as a dot product against the situation's demand; the worked example now declares a coverage vector (The strategy is a program, Glossary).
 

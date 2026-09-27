@@ -1,6 +1,6 @@
 # Design Brief — Myrmex UI Mockups
 
-Document version 1.1 — 27 September 2026.
+Document version 1.2 — 27 September 2026.
 
 The brief and full specification for mocking up the observer interface and the complete object set in the Claude Design app. Derived from [VISION.md](VISION.md) §The look, [ARCHITECTURE.md](ARCHITECTURE.md) (§Agents, §Nest, §Observability, §What v0 implements) and [ROADMAP.md](ROADMAP.md) (v0.2, v0.6, v1.6) — those three remain the source of truth; if this brief disagrees with them, they win.
 
@@ -20,6 +20,7 @@ Produce mockups for:
 
 ## 2. Style pillars
 
+- **Pure top-down.** The camera looks straight down — **no isometric, no StarCraft-style ¾ pseudo-3D**, no elevation on walls or rocks: depth reads through shape, tint and a soft drop shadow, never through perspective. This is structural, not taste: agents are one sprite **rotated toward heading** (¾ view would demand directional frame sets), sprites fit their cells with no y-sorting, and the asset budget stays ~20 SVGs.
 - **"The logic is cellular; the picture is free."** Vector: simple shapes, soft gradients and shadows. Deliberately **no pixel-art**, no outline-only line art.
 - **One silhouette, many tints.** A single myrmek shape for every role; role, day phase and state are **color** (engine `modulate` tint), never separate assets. Sprites are drawn **white/grey wherever color varies**.
 - **Sharp at every zoom.** SVG sources rasterized at 128 px/cell with mipmaps; art must read from 8 to 48 px per cell on screen.
@@ -32,6 +33,16 @@ Produce mockups for:
 - The whole set stays hand-drawable: **~20 SVGs** total.
 - HUD text contrast ≥ 4.5:1; icons are drawn strokes, never emoji; touch targets ≥ 44 px (the web client arrives in v4).
 - A gap in the wall is **ordinary ground** — it must read as an opening in the ring, not as a special "door" object.
+
+### Anti-patterns (from early AI mockups — do not repeat)
+
+- **Pseudo-3D / ¾ RTS perspective** — tall rocks, domed nests, wall elevation. Top-down only.
+- **Trees, bushes, decorative flora** — the terrain is ground, water and rock; nothing else exists.
+- **A tamagotchi queen panel** (health / reproduction / "laying eggs") — the queen panel is the mode chip, the Lua program with fired branches, the policy readout and the version history. Births don't exist before v2.
+- **Dig / build / terraform tools** — the observer never digs or builds; interventions act on the world (food, predators), never on structures.
+- **HP on walls** — walls have no hit points; builders demolish them in time, nothing "damages" them before v5.
+- **Torches, lanterns, glowing eyes at night** — night is one full-screen tint; even v1.6 adds only a single warm light per gap.
+- **Manual save buttons** — saving is automatic; the UI shows only "saved · day N" (named slots are a v1.6 option).
 
 ## 3. Audience and platform
 
@@ -163,6 +174,8 @@ Accepted when: pleasant at both v0 zooms (ROADMAP v0.2 DoD); every silhouette un
 ---
 
 ## History of changes
+
+**v1.2 (27.09.2026)** — pinned pure top-down projection as the first style pillar (with the structural reasons) and added the Anti-patterns section distilled from an early AI mockup: no pseudo-3D, no flora, no tamagotchi queen panel, no dig/build tools, no wall HP, no torches, no manual save buttons.
 
 **v1.1 (27.09.2026)** — corrected the gap light to v1 (`PointLight2D` arrives in v1.6; the prototype's night is the tint alone) in the inventory, the overlay table and deliverable 1; added the companion prototype brief ([DESIGN_BRIEF_PROTOTYPE.md](DESIGN_BRIEF_PROTOTYPE.md)).
 

@@ -1,6 +1,6 @@
 # Design Brief — Myrmex v0 Prototype Interface
 
-Document version 1.0 — 27 September 2026.
+Document version 1.1 — 27 September 2026.
 
 A self-contained brief for the Claude Design app: mock up **exactly what the v0 prototype's interface will look like** — nothing from later versions. Companion to [DESIGN_BRIEF.md](DESIGN_BRIEF.md) (the full-system brief); where they disagree, the v0 rules here win for these mockups.
 
@@ -12,7 +12,7 @@ Myrmex is a deterministic ant-nest simulation: ~40 ant-like **myrmeks** (plus a 
 
 ## Style, in one paragraph
 
-Vector, calm, ambient: simple shapes, soft gradients and shadows, **no pixel-art**, no emoji. The world is bright; the HUD is dark, edge-anchored chrome (`#201F1C`, raised `#2A2926`, text `#FAF9F5`, dim `#B8B2A6`, accent `#D97757`, ok `#7FA85C`, danger `#D64545`; text contrast ≥ 4.5:1). One myrmek silhouette for all roles, colored by tint. Flat tiles (no autotile edges in v0), two zooms only: **16 and 32 px per cell**. Night is a full-screen tint — **no gap light in v0**. Icons are drawn strokes.
+Vector, calm, ambient, and **pure top-down** — the camera looks straight down; no isometric or StarCraft-style ¾ pseudo-3D, no elevation on walls or rocks (agents are one sprite rotated toward heading, so perspective would break them). Simple shapes, soft gradients and shadows, **no pixel-art**, no emoji. The world is bright; the HUD is dark, edge-anchored chrome (`#201F1C`, raised `#2A2926`, text `#FAF9F5`, dim `#B8B2A6`, accent `#D97757`, ok `#7FA85C`, danger `#D64545`; text contrast ≥ 4.5:1). One myrmek silhouette for all roles, colored by tint. Flat tiles (no autotile edges in v0), two zooms only: **16 and 32 px per cell**. Night is a full-screen tint — **no gap light in v0**. Icons are drawn strokes.
 
 ## v0 palette (engine tints over white/grey art)
 
@@ -64,6 +64,10 @@ Docked right, dark chrome, monospace for code:
 5. **v0 sprite mini-sheet** (~1200×800): ground · water · rock · wall (+50% ghost) · storage-food (empty/⅔/full) · storage-res · queen chamber · food ×1/×3/×5 · resource (rich/depleted) · pile · **myrmek** in three role tints + cargo dot · queen · spider (ambush/lunge/eating) · selection ring · path marker — each on light and dark ground, at 32 px and a 16 px strip below.
 6. **Minimap close-up** (256×256 shown at 2×): the known blob around the nest, unknown black beyond, red spider dot, white myrmek specks, viewport rectangle.
 
+## Anti-patterns — do not draw
+
+Pseudo-3D / ¾ perspective · trees or any flora (terrain is ground, water, rock — nothing else) · a queen panel with health/reproduction/eggs (it shows the mode chip, the Lua program, the six policy fields, the history) · dig or build tools (interventions are food and the spider only) · HP bars on walls · torches, lanterns or glowing eyes at night (the tint is the night) · manual save buttons (only `saved · day N`).
+
 ## Acceptance
 
 Role tints apart at 16 px (they differ in lightness, not hue alone); wall ≠ rock at a glance; storage fill readable at 16 px; the night shot legible under the overlay; every silhouette unique at 16 px; HUD calm and quiet — the world stays the hero.
@@ -71,5 +75,7 @@ Role tints apart at 16 px (they differ in lightness, not hue alone); wall ≠ ro
 ---
 
 ## History of changes
+
+**v1.1 (27.09.2026)** — pinned pure top-down in the style paragraph and added the Anti-patterns list distilled from an early AI mockup.
 
 **v1.0 (27.09.2026)** — initial version: the self-contained v0-only brief — palette subset, the complete v0 HUD list with explicit exclusions, the queen panel and inspector in v0 form, six artboards, acceptance criteria.
