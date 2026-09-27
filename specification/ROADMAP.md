@@ -1,6 +1,6 @@
 # Roadmap — Myrmex
 
-Document version 1.1 — 27 September 2026.
+Document version 1.2 — 27 September 2026.
 
 Seven versions, built in order: **v0** prototype "First Night" (headless core, three roles, the spider, sandboxed Lua strategies, the Gemini loop) → **v1** the full nest (big world, six roles, three predators, paving, the full StateView, the arena, full UI) → **v2** births → **v3** replay → **v4** server and clients → **v5** nests at war → **v6** evolution and the genome. Versions are numbered from 0; phases inside a version are numbered `vA.B`. Each phase lists a **Goal**, a short description, a **Tasks** list, and a **Definition of Done (DoD)**, and ships with the automated tests that encode its DoD (see [ARCHITECTURE.md](ARCHITECTURE.md) §Testing).
 
@@ -174,12 +174,12 @@ Scale the prototype to the full simulation: the big chunked world with an active
 **Tasks:**
 - The full `StateView` (ARCHITECTURE §Contracts) and the full policy schema; the LLM's API description extended to match.
 - Strategy library (`user://strategies/`): names, versions, revision history; load as `PROGRAM`; save-to-library from the queen panel.
-- The arena: headless batch runs of N strategies × M seeds → a results table (survival, food, deaths, capacity growth).
+- The arena (`res://tools/run_arena.gd`): the *strategies × seeds* matrix run **sequentially in one headless process**, each cell a fresh world from its own seed; one results table per run under `user://arena/<run_id>/` (per cell: survival, days, deaths by cause, food, capacity growth, ticks) plus a summary ranking.
 - Providers: OpenAI-compatible, Anthropic, Ollama alongside Gemini and `MOCK`; keys in local config outside the repo.
 
-**DoD:** the full `StateView` and policy surface are pinned by contract tests; the arena ranks a set of strategies on identical seeds reproducibly.
+**DoD:** the full `StateView` and policy surface are pinned by contract tests; the arena ranks a set of strategies on identical seeds, and re-running the same strategy list and seed list reproduces the table exactly.
 
-**Tests:** golden `StateView` fixtures → expected policies; full policy schema bounds; arena determinism; provider abstraction against mocks.
+**Tests:** golden `StateView` fixtures → expected policies; full policy schema bounds; arena reproducibility (the same matrix twice → an identical table); provider abstraction against mocks.
 
 ### v1.6 — The full observer surface and saves
 
@@ -347,6 +347,8 @@ Selection at both levels: bodies and strategies. Depends on: v2 (births), v5 (mu
 ---
 
 ## History of changes
+
+**v1.2 (27.09.2026)** — v1.5's arena task specified per the decided execution model: a sequential single-process matrix in `res://tools/run_arena.gd`, one results table per run under `user://arena/<run_id>/`, with table reproducibility in the DoD and tests.
 
 **v1.1 (27.09.2026)** — decisions folded in: strategies are sandboxed Lua 5.4 from the prototype — v0.5 rewritten around godot-luaAPI (sandbox, instruction limit, dry run) and v1.5 renamed to "The full StateView, the library, and the arena" with the GDScript↔Lua parity tests dropped (intro, v1 intro, v0.5, v1.5); gdUnit4 and `scripts/test.sh` pinned in v0.1; named RNG streams in v0.1; fixed-point energy in v0.3.
 

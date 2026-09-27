@@ -1,6 +1,6 @@
 # Architecture — Myrmex
 
-Document version 1.5 — 27 September 2026.
+Document version 1.7 — 27 September 2026.
 
 ## Overview
 
@@ -319,6 +319,8 @@ sequenceDiagram
 
 **Strategy library:** programs are files (`user://strategies/`) with names, versions, and revision history; any can be loaded as `PROGRAM` or raced headless on identical seeds — the arena.
 
+**The arena** runs the matrix of *strategies × seeds* **sequentially in a single headless process** (`res://tools/run_arena.gd`). One process is the deliberate choice: each cell of the matrix gets its own fresh world from its own seed, nothing is shared, and the whole matrix is therefore reproducible by construction — re-running the same strategy list and seed list yields the same table, which is the only thing that makes "strategy A beats strategy B" a claim rather than an impression. Each run writes one results table under `user://arena/<run_id>/` — per cell: survival, days reached, deaths by cause, food collected, capacity growth, ticks elapsed — plus a summary ranking. Parallel worker processes are a later optimization, admissible precisely because the cells are already independent and individually seeded; they must never share simulation state, and a parallel run must reproduce the sequential table.
+
 ## Contracts
 
 The stable seams. Changing a contract must change its contract test (§Testing).
@@ -351,7 +353,7 @@ At 2048x2048: terrain 4 MB + structures 4 MB + knowledge 4 MB and distance field
 
 ## Saves
 
-Since the sim is pure data, saving is serialization: format version, seed and parameters, clock, layer arrays, sparse object/agent dictionaries, nest state (storages, task board, build plan/queue, frontier), strategy program + journal + `memory`, RNG stream states — `var_to_bytes` into a compressed file (`FileAccess.open_compressed`) beside a small JSON header (version, seed, day, population, date) for slot lists. **Saving is automatic**: every dawn (`autosave_ticks` 1120), on exit, and before applying a new strategy version; the last 3 autosaves plus one per simulation day are kept; launch resumes from the latest autosave — "new world" is a deliberate action. Writes run on a background thread from array copies, to a temp name renamed on success, so a crash never corrupts the previous save. Loading rebuilds the render, minimap, and distance field. Backward compatibility across format versions is not guaranteed before v4 (saves move server-side there).
+Since the sim is pure data, saving is serialization: format version, seed and parameters, clock, layer arrays, sparse object/agent dictionaries, nest state (storages, task board, build plan/queue, frontier), strategy program + journal + `memory`, RNG stream states — `var_to_bytes` into a compressed file (`FileAccess.open_compressed`) beside a small JSON header (version, seed, day, population, date) for slot lists. The body carries **plain types only** — numbers, strings, arrays, dictionaries, packed arrays — and is read back with `bytes_to_var`, **never `bytes_to_var_with_objects`**: a save file can therefore never instantiate a class or execute code, which matters from v4 where saves live on a server and a file of unknown origin can arrive. A contract test asserts the round trip stays object-free. **Saving is automatic**: every dawn (`autosave_ticks` 1120), on exit, and before applying a new strategy version; the last 3 autosaves plus one per simulation day are kept; launch resumes from the latest autosave — "new world" is a deliberate action. Writes run on a background thread from array copies, to a temp name renamed on success, so a crash never corrupts the previous save. Loading rebuilds the render, minimap, and distance field. Backward compatibility across format versions is not guaranteed before v4 (saves move server-side there).
 
 ## Error handling and resilience
 
@@ -363,7 +365,7 @@ Since the sim is pure data, saving is serialization: format version, seed and pa
 ## Security
 
 - Strategies run sandboxed from the first prototype: Lua 5.4 with only `base`/`table`/`string`/`math` bound (no `os`/`io`/`require`/`load`/engine access) and an instruction counter. Every new version additionally passes schema/bounds validation and a dry run on recorded states. On the server (v4), where foreign strategies may appear, the same sandbox is the outer wall.
-- LLM keys live in local configuration outside the repo (v1); from v4, only on the server.
+- LLM keys live in a **gitignored `.env` at the project root**; a committed `.env.example` documents the variable names and nothing else. Godot does not read `.env` itself, so a small loader in the app/server layer parses it into the process environment at startup — real environment variables always take precedence, which is how the v4 server supplies them (systemd `EnvironmentFile=`) without a second mechanism. The file is never committed, never bundled into an export, and never logged; a missing key degrades to `PROGRAM` mode with a plain message, never a crash, and tests use `MOCK` and need no key at all.
 - Server access (v4): one shared token for all clients, TLS (`wss://`) terminated by Caddy/nginx, external access via tunnel or VPN. No accounts.
 
 ## Observability
@@ -391,7 +393,7 @@ Defaults are data (`res://data/*.tres` — `roles.tres`, `predators.tres`, `sim_
 | Rendering | `TileMapLayer` tile window · `MultiMeshInstance2D` (myrmeks) · `AnimatedSprite2D` (predators) · `Sprite2D` (objects) · `CanvasModulate` + `PointLight2D` (day/night) | Only a ~128x96 window around the camera is filled; myrmek positions interpolate between ticks so cell-stepping logic looks continuous |
 | Art | **SVG**, rasterized at import (128 px/cell, mipmaps), tinted via `modulate` | Small hand-drawable set; sharp from 8 to 48 px per cell; role/state/phase are colour, not extra assets |
 | Config data | Godot `Resource` `.tres` files | `roles.tres`, `predators.tres`, `sim_params.tres` — defaults are data, editable live from the parameters panel |
-| LLM | **Gemini 3.1 Pro** (Google AI API) via `HTTPRequest`, behind an abstracted provider seam | Alongside: OpenAI-compatible, Anthropic, local Ollama, and `MOCK` (reads a program from a file) — the only provider used in tests. Async; keys in local config outside the repo, server-side only from v4 |
+| LLM | **Gemini 3.1 Pro** (Google AI API) via `HTTPRequest`, behind an abstracted provider seam | Alongside: OpenAI-compatible, Anthropic, local Ollama, and `MOCK` (reads a program from a file) — the only provider used in tests. Async; keys in a gitignored `.env` loaded into the environment (§Security), server-side only from v4 |
 | Tests | **gdUnit4**, headless | `scripts/test.sh` is the canonical gate: unit, contract, determinism, strategy-safety, balance smoke. No paid API calls, ever |
 | Networking (v4) | `WebSocketMultiplayerPeer`, binary `PackedByteArray` messages | Snapshot-plus-deltas protocol, compressed above 1 KB — see ROADMAP v4.1 |
 | Deployment (v4) | Headless Linux export as a systemd service or Docker image, behind Caddy or nginx | TLS (`wss://`), COOP/COEP headers for the web export, one shared token, tunnel or VPN for outside access — see ROADMAP v4.3 |
@@ -461,13 +463,14 @@ Every roadmap phase ships with the tests that encode its DoD; all sim tests run 
 Decisions still open, each with the current recommendation. When one is settled, fold the answer into the sections above and log it in the history; new questions are added here as they arise.
 
 1. **The async boundary** — `HTTPRequest` is a `Node`, and the sim is pure data. *Recommendation: pin as a contract that `res://sim/` never touches the network or the scene tree — the LLM client lives in the app/server layer behind the provider seam, and a new program version enters the sim only at a tick boundary.*
-2. **Serialization without objects** — a save read with `bytes_to_var_with_objects` is an attack vector (a foreign save becomes code execution). *Recommendation: plain types only in the save format (numbers, strings, arrays, dictionaries), never full objects; critical from v4 when saves live on the server.*
-3. **Arena execution model** — parallel headless processes or sequential in one process, and where results live. *Recommendation: sequential first (simplest determinism), parallel processes later; one results table per run under `user://arena/`.*
-4. **Local key configuration (v1)** — "outside the repo" is decided; the exact location and format are not. *Recommendation: a config file under the platform config dir (`OS.get_config_dir()`/myrmex), with environment variables taking precedence.*
 
 ---
 
 ## History of changes
+
+**v1.7 (27.09.2026)** — two more open questions decided: the save format carries plain types only and is read with `bytes_to_var`, never `bytes_to_var_with_objects`, pinned by a contract test (Saves); LLM keys live in a gitignored `.env` at the project root with a committed `.env.example`, parsed into the environment by a loader in the app/server layer, real environment variables winning, a missing key degrading to `PROGRAM` mode (Security, Tech stack). One open question remains — the async boundary.
+
+**v1.6 (27.09.2026)** — open question decided: the arena runs its *strategies × seeds* matrix sequentially in one headless process (`res://tools/run_arena.gd`), each cell freshly seeded and independent, writing one reproducible results table per run under `user://arena/<run_id>/`; parallel workers are a later optimization that must reproduce the sequential table (The queen's brain). Three open questions remain.
 
 **v1.5 (27.09.2026)** — added the **What v0 implements** section after Overview: a per-section table of what the prototype reduces (world size and no chunks, three roles and 40 myrmeks, the spider only, fixed-ring build plans, the tiny StateView, the single autosave file, flat tiles and two zooms, two interventions, no server) against what it defers and to which phase, plus the list of invariants the prototype does **not** reduce (pure-data sim, determinism, physical rules, contracts pinned by tests, the Lua sandbox, headless-first).
 
