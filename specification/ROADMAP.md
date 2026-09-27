@@ -1,6 +1,6 @@
 # Roadmap — Myrmex
 
-Document version 1.7 — 27 September 2026.
+Document version 1.8 — 27 September 2026.
 
 Seven versions, built in order: **v0** prototype "First Night" (headless core, three roles, the spider, sandboxed Lua strategies, the Gemini loop) → **v1** the full nest (big world, six roles, three predators, paving, the full StateView, the arena, full UI) → **v2** births → **v3** replay → **v4** server and clients → **v5** nests at war → **v6** evolution and the genome. Versions are numbered from 0; phases inside a version are numbered `vA.B`. Each phase lists a **Goal**, a short description, a **Tasks** list, and a **Definition of Done (DoD)**, and ships with the automated tests that encode its DoD (see [ARCHITECTURE.md](ARCHITECTURE.md) §Testing).
 
@@ -39,7 +39,7 @@ Stand up `res://sim/` as pure data: layer arrays, the clock with the day cycle, 
 The view layer over the untouched sim: flat tiles in a window around the camera, the minimap, day/night tinting, and time controls.
 
 **Tasks:**
-- Tile-window renderer (~128x96 buffer refilled on camera moves); flat tiles, no autotiling; zooms 16 and 32 px.
+- Tile-window renderer (~128x96 buffer refilled on camera moves) in the **¾ RTS view** on the square grid: flat ground tiles (no autotiling yet), tall tiles — wall, rock — with a top + front face, **Y-sort**; zooms 16 and 32 px.
 - Camera panning (WASD, edge, drag); minimap 256x256 at 1 px/cell with the colour priority (unknown > predator > myrmek > food > resource > nest > water > rock > ground), viewport frame, click-to-move; updates only for changed cells every `N_map` ticks.
 - `CanvasModulate` day-phase gradient; pause / 1x / 4x / 16x / single step; day-and-tick counter with phase indicator.
 - The **decor layer**: ~6 small ground-dressing sprites (grass tufts ×2, pebbles, flower, dry patch, moss fleck) placed by `hash(world_seed, cell)` on ground cells (~1 per 5) — render-only, no sim state, no minimap, nothing in saves.
@@ -47,7 +47,7 @@ The view layer over the untouched sim: flat tiles in a window around the camera,
 
 **DoD:** the generated world scrolls smoothly at both zooms at 16x speed; the minimap tracks changes and moves the camera; night is visibly night; the field reads varied — dressed ground, not a flat green.
 
-**Tests:** the view never mutates sim state (contract); minimap block invalidation on cell changes; decor placement is a pure function of (seed, cell) — identical dressing on identical seeds, absent from saves. Visual quality is assessed manually (prototype criterion: pleasant at both zooms).
+**Tests:** the view never mutates sim state (contract); minimap block invalidation on cell changes; Y-sort order — an agent south of a wall draws in front of it, north behind; decor placement is a pure function of (seed, cell) — identical dressing on identical seeds, absent from saves. Visual quality is assessed manually (prototype criterion: pleasant at both zooms).
 
 ### v0.3 — Three roles, building, the first night
 
@@ -56,7 +56,7 @@ The view layer over the untouched sim: flat tiles in a window around the camera,
 Agents arrive: worker/builder/guard state machines, the queen's tactical task board, knowledge and frontier, the energy economy, and nest construction with night sealing.
 
 **Tasks:**
-- Agent records and the shared state machine (`IDLE`/`GO_TO`/`WORK`/`RETURN`/`DEPOSIT` + `HUNGRY`/critical); 8-directional movement, one agent per cell; `MultiMeshInstance2D` rendering with interpolation and role tint.
+- Agent records and the shared state machine (`IDLE`/`GO_TO`/`WORK`/`RETURN`/`DEPOSIT` + `HUNGRY`/critical); 8-directional movement, one agent per cell; `MultiMeshInstance2D` rendering with interpolation, role tint, and per-instance selection from the five-direction frame atlas (N·NE·E·SE·S, west mirrored) via a small shader.
 - Roles: worker (carries if there is something to carry, mines if a patch is assigned, else explores the frontier), builder (walls, storages, open/close gaps), guard (patrol ring, stand in gaps); the immobile queen.
 - Knowledge mask + incremental frontier; reveal radius 2 (5 for exploring workers); pathfinding: global weighted BFS distance field + local `AStarGrid2D`; unreachable targets never assigned.
 - Task board on `N_plan`: `EXPLORE`, `FETCH_FOOD`, `HARVEST`, `BUILD`, `FEED_MYRMEK`, `PATROL`, `HOLD_GAP`, `OPEN_GAP`, `CLOSE_GAP`; ranking safety → feeding → food → build → explore; greedy assignment by distance; the hardcoded first-day plan. This is `queen_brain = BUILTIN`: the queen directs every myrmek on her own algorithm, with no strategy program anywhere in the project yet (Lua arrives in v0.5).
@@ -72,7 +72,7 @@ Agents arrive: worker/builder/guard state machines, the queen's tactical task bo
 **Goal:** danger that makes guards matter.
 
 **Tasks:**
-- Spider: ambush behaviour, `WANDER`/`HUNT`/`ATTACK`/`EAT`/`REST`, energy-driven hunting, night multipliers (cooldown, eating, vision); spawn ring 60–150 cells, target count.
+- Spider: ambush behaviour, `WANDER`/`HUNT`/`ATTACK`/`EAT`/`REST`, energy-driven hunting, night multipliers (cooldown, eating, vision); spawn ring 60–150 cells, target count; directional frames for its three poses (snapped to four directions, west mirrored).
 - Combat: 8-adjacent damage each tick, stacking attackers, gap crossfire; worker one-hit deaths, `FLEE` for workers; carcass → `FOOD` hauled to storage; cargo drop on death.
 - Balance pass: food spawn vs deaths vs guard coverage; death counters by cause.
 
@@ -198,7 +198,7 @@ Scale the prototype to the full simulation: the big chunked world with an active
 - All interventions: place food, create a patch, summon any predator, delete object/agent, heal, reveal an area — all journaled commands.
 - Full inspector; statistics with charts over the last N days; complete event log.
 - Save system: rotation (last 3 autosaves + one per day), the saved-days list with rollback, optional named slots (F5), background-thread writes with temp-and-rename, resume-on-launch, "new world" as the deliberate alternative.
-- Graphics polish: zooms 8/16/32/48, terrain-set autotiling (shores, rock edges, walls, paving), `PointLight2D` at the gap, cargo sprites.
+- Graphics polish: zooms 8/16/32/48, terrain-set autotiling with ¾-aware edges (shores, rock edges, walls, paving), `PointLight2D` at the gap, cargo sprites.
 
 **DoD:** a full nest per this specification is observable, steerable, and tunable end to end; autosaves rotate and any saved day restores; the sim still runs and tests still pass headless.
 
@@ -355,6 +355,8 @@ Selection at both levels: bodies and strategies. Depends on: v2 (births), v5 (mu
 ---
 
 ## History of changes
+
+**v1.8 (27.09.2026)** — the ¾ RTS view lands in the phases: v0.2 renders tall tiles with top+front faces under Y-sort (with the Y-sort ordering test), v0.3 selects myrmek directional frames per MultiMesh instance, v0.4 gives the spider directional poses, v1.6's autotiling becomes ¾-aware.
 
 **v1.7 (27.09.2026)** — v0.2 gains the render-only decor layer (six ground-dressing sprites placed by `hash(world_seed, cell)`), with the varied-field DoD line and the purity test.
 
