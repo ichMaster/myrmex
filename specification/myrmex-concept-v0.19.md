@@ -1,209 +1,209 @@
-# Myrmex — концептуальна специфікація симуляції гнізда мірмеків
+# Myrmex — Concept Specification of a Myrmek Nest Simulation
 
-Версія 0.19 (концепт). 27 вересня 2026.
-Назва проєкту: **Myrmex** (від грецького *μύρμηξ* — «мурашка»).
-Істота: **мірмек** (множина — мірмеки; англ. *myrmek*, *myrmeks*) — мурахоподібна істота, що живе в гнізді з центральною координацією.
-Гніздо (у коді — `Nest`) — це і спільнота мірмеків із маткою, і їхня база: ділянка ґрунту, обгороджена стінами, зі складами всередині. Проходи в стіні мірмеки роблять і охороняють самі.
-
----
-
-## 1. Мета і межі
-
-Симуляція автономного гнізда мірмеків у великому клітинному 2D-світі на Godot. Спостерігач стежить за гніздом, може втручатися (підкидати їжу, ставити хижаків, міняти параметри), але саме гніздо живе за власною логікою: матка координує, мірмеки різних ролей виконують завдання, хижаки полюють, день змінює ніч.
-
-Перша версія — одне гніздо з фіксованим складом близько 100 мірмеків, без народження та еволюції. Архітектура одразу закладає народження, еволюцію і кілька ворогуючих гнізд у наступних версіях.
-
-**У v1 входить:** генератор світу, спільна карта знань гнізда (туман війни), шість ролей, матка-координатор, енергія і голод у всіх агентів, їжа та будівельні ресурси, будівництво гнізда, кілька типів хижаків, цикл дня і ночі, інструменти втручання, мінікарта як у StarCraft, збереження та завантаження, стратегія матки як програма (GDScript у прототипі, Lua у v1), яку пише людина або LLM (Gemini 3.1 Pro). У v1 це одна нативна аплікація Godot (macOS), у якій симуляція і рендер працюють в одному процесі; серверна симуляція з веб-клієнтом запланована на v1.3 (розділ 12).
-
-**У v1 не входить:** народження мірмеків, еволюція, кілька гнізд, звук.
+Version 0.19 (concept). 27 September 2026.
+Project name: **Myrmex** (from Greek *μύρμηξ*, "ant").
+Creature: **myrmek** (plural: **myrmeks**), an ant-like creature that lives in a nest with central coordination.
+Nest (in code: `Nest`) means both the community of myrmeks with their queen and their base: a patch of ground enclosed by walls, with storages inside. The myrmeks make and guard the gaps in the wall themselves.
 
 ---
 
-## 2. Ключові рішення
+## 1. Goal and scope
 
-| Питання | Рішення | Чому |
+A simulation of an autonomous myrmek nest in a large cellular 2D world built in Godot. The observer watches the nest and can intervene (drop food, place predators, change parameters), but the nest lives by its own logic: the queen coordinates, myrmeks of different roles carry out tasks, predators hunt, and day turns into night.
+
+The first version is a single nest with a fixed population of about 100 myrmeks, without births or evolution. The architecture is designed from the start to support births, evolution and several warring nests in later versions.
+
+**In v1:** world generator, the nest's shared knowledge map (fog of war), six roles, the queen as coordinator, energy and hunger for all agents, food and building resources, nest construction, several predator types, a day and night cycle, intervention tools, a StarCraft-style minimap, save and load, and the queen's strategy as a program (GDScript in the prototype, Lua in v1) written by a human or an LLM (Gemini 3.1 Pro). In v1 this is a single native Godot application (macOS) with simulation and rendering in one process; a server-side simulation with a web client is planned for v1.3 (section 12).
+
+**Not in v1:** myrmek births, evolution, multiple nests, sound.
+
+---
+
+## 2. Key decisions
+
+| Question | Decision | Why |
 |---|---|---|
-| Рушій | Godot 4.x (4.3+), GDScript | Швидкий старт; критичні частини можна винести в GDExtension пізніше |
-| Час | Дискретні тіки, базово 10 тіків/с, множники 0.5x–16x, пауза, крок | Детермінованість, просте відлагодження, відтворювані запуски |
-| Світ | Розмір задається при генерації: від 256x256 до 2048x2048, кратно чанку 64 (типово 2048x2048, 4,2 млн клітин); клітина — атомарна одиниця логіки | Малі світи для тестів і швидких забігів, великий — для майбутніх гнізд |
-| Погляд | Графічне вікно показує фрагмент (~64x36 клітин), решта — мінікарта | Не рендерити 4 млн клітин; звичний UX стратегій |
-| Координація | Спільна карта знань + матка призначає завдання; феромонів немає | Відповідає задуму; простіше пояснити і налагодити |
-| Пам'ять гнізда | Відвідана клітина відома назавжди; на відомих клітинах гніздо бачить об'єкти і агентів у реальному часі | Просто для v1; режим "останній відомий стан" — параметр на майбутнє |
-| Енергія | У всіх мірмеків і хижаків; смерть від голоду | Створює тиск на економіку і сенс для носильників |
-| Зайнятість клітини | Не більше одного агента на клітину всюди, і всередині гнізда теж | Місткість гнізда — це кількість клітин ґрунту всередині стін, тому гніздо треба будувати достатньо великим |
-| Стіни і проходи | Стіна непрохідна для всіх без винятку. Спеціального типу «вхід» немає: прохід — це просто клітина ґрунту в кільці стін, яку будівельники лишили або відкрили, і крізь неї може пройти будь-хто, зокрема хижак | Оборона тримається не на умовностях, а на охоронцях, які стоять у проході, і на будівельниках, які можуть його закрити |
-| Старт | Матка і повний склад мірмеків на відкритій ділянці, без жодних споруд і запасів | Перша ніч — перший виклик: до темряви треба добути ресурси, поставити стіни і зібрати їжу |
-| Архітектура | Симуляція — чисті дані в масивах без залежності від Node; рендер лише читає стан | Тести без рендеру, заміна графіки, масштабування до тисяч агентів |
-| Мозок матки | Два рівні: тактичний (алгоритмічна дошка завдань, керує кожним мірмеком) і стратегічний (програма-стратегія з функцією `plan()`, яку матка виконує сама; її пише людина або LLM). Мова: GDScript у прототипі, Lua у пісочниці з v1. LLM ніколи не керує мірмеками напряму | Модель кличеться рідко — лише щоб написати чи переглянути програму; решту часу стратегія виконується за мікросекунди |
-| Розгортання | v1 — одна нативна аплікація для macOS, симуляція і рендер в одному процесі, але симуляція вже відокремлена від рендеру як чисті дані. З v1.3 — headless-сервер Godot на Linux і веб-клієнт з того самого проєкту (план у розділі 12) | Швидко дійти до живого гнізда; поділ на сервер і клієнт потім не вимагає переписувати симуляцію |
-| Детермінізм | Один seed для світу і симуляції; агенти обробляються в порядку id; відповіді LLM записуються в журнал, тож забіг відтворюється і з нею | Відтворюваність, повтори, порівняння балансу і стратегій |
+| Engine | Godot 4.x (4.3+), GDScript | Fast start; critical parts can move to GDExtension later |
+| Time | Discrete ticks, base 10 ticks/s, speed multipliers 0.5x–16x, pause, single step | Determinism, simple debugging, reproducible runs |
+| World | Size set at generation: from 256x256 to 2048x2048, a multiple of the 64-cell chunk (default 2048x2048, 4.2 million cells); the cell is the atomic unit of logic | Small worlds for tests and quick runs, the large one for future nests |
+| View | The graphics window shows a fragment (~64x36 cells); the rest is on the minimap | No rendering of 4 million cells; familiar strategy-game UX |
+| Coordination | Shared knowledge map + the queen assigns tasks; no pheromones | Matches the concept; simpler to explain and debug |
+| Nest memory | A visited cell is known forever; on known cells the nest sees objects and agents in real time | Simple for v1; a "last known state" mode is a parameter for the future |
+| Energy | All myrmeks and predators have it; death from starvation | Creates economic pressure and gives carriers a purpose |
+| Cell occupancy | At most one agent per cell everywhere, including inside the nest | Nest capacity is the number of ground cells inside the walls, so the nest must be built large enough |
+| Walls and gaps | Walls are impassable to everyone without exception. There is no special "entrance" type: a gap is simply a ground cell in the wall ring that builders left or opened, and anyone can pass through it, predators included | Defence rests not on conventions but on guards standing in the gap and on builders who can close it |
+| Start | The queen and the full myrmek population on open ground, with no structures and no stock | The first night is the first challenge: before dark the nest must gather resources, raise walls and collect food |
+| Architecture | The simulation is pure data in arrays with no dependency on Node; rendering only reads the state | Tests without rendering, swappable graphics, scaling to thousands of agents |
+| Queen's brain | Two levels: tactical (an algorithmic task board that directs every myrmek) and strategic (a strategy program with a `plan()` function that the queen runs herself; written by a human or an LLM). Language: GDScript in the prototype, sandboxed Lua from v1. The LLM never controls myrmeks directly | The model is called rarely, only to write or revise the program; the rest of the time the strategy runs in microseconds |
+| Deployment | v1 is a single native macOS application with simulation and rendering in one process, but the simulation is already separated from rendering as pure data. From v1.3: a headless Godot server on Linux and a web client from the same project (plan in section 12) | Reach a living nest quickly; splitting into server and client later does not require rewriting the simulation |
+| Determinism | One seed for the world and the simulation; agents are processed in id order; LLM responses are logged, so a run can be replayed even with the LLM | Reproducibility, replays, comparing balance and strategies |
 
 ---
 
-## 3. Світ
+## 3. World
 
-### 3.1 Клітина
+### 3.1 Cell
 
-Кожна клітина має кілька шарів:
+Each cell has several layers:
 
-| Шар | Тип даних | Значення |
+| Layer | Data type | Values |
 |---|---|---|
-| Ландшафт | `PackedByteArray` | `GROUND` (прохідна), `WATER`, `WALL` (непрохідні для всіх) |
-| Споруда | `PackedByteArray` | `NONE`, `NEST_WALL`, `PAVEMENT` (покриття: прискорює рух), `STORAGE_FOOD`, `STORAGE_RES`, `QUEEN_CHAMBER` |
-| Об'єкт | розріджений `Dictionary[cell -> Object]` | `FOOD(units)`, `RESOURCE(patch_id)`, `PILE(type, units)` — не більше одного об'єкта на клітину |
-| Агенти | розріджений `Dictionary[cell -> agent_ids]` | мірмеки та хижаки |
-| Знання | `PackedByteArray` на кожне гніздо | 0 — невідомо, 1 — відомо |
+| Terrain | `PackedByteArray` | `GROUND` (passable), `WATER`, `WALL` (impassable to all) |
+| Structure | `PackedByteArray` | `NONE`, `NEST_WALL`, `PAVEMENT` (paving: speeds up movement), `STORAGE_FOOD`, `STORAGE_RES`, `QUEEN_CHAMBER` |
+| Object | sparse `Dictionary[cell -> Object]` | `FOOD(units)`, `RESOURCE(patch_id)`, `PILE(type, units)`; at most one object per cell |
+| Agents | sparse `Dictionary[cell -> agent_ids]` | myrmeks and predators |
+| Knowledge | `PackedByteArray` per nest | 0 = unknown, 1 = known |
 
-### 3.2 Чанки
+### 3.2 Chunks
 
-Світ ділиться на чанки 64x64 клітини (для 2048x2048 — сітка 32x32 чанки). Чанк зберігає: прапорець активності, списки агентів і об'єктів у ньому, прапорець "змінено" для мінікарти.
+The world is divided into 64x64-cell chunks (for 2048x2048, a 32x32 grid of chunks). A chunk stores: an active flag, lists of agents and objects in it, and a "changed" flag for the minimap.
 
-**Активна зона** — чанки в радіусі R навколо гнізда плюс чанки, де є відомі клітини або агенти. Спавн їжі, хижаків та відновлення ресурсів працюють лише в активній зоні. Решта світу спить, доки її не відкриють. Це і економить CPU, і робить велику карту осмисленою для гнізда зі 100 мірмеків: світ "прокидається" разом з експансією.
+**Active zone**: chunks within radius R of the nest plus chunks that contain known cells or agents. Spawning of food and predators and resource regeneration happen only in the active zone. The rest of the world sleeps until discovered. This saves CPU and makes the large map meaningful for a nest of 100 myrmeks: the world "wakes up" along with the expansion.
 
-### 3.3 Генерація
+### 3.3 Generation
 
-- Вхід: seed, розмір, частка води, частка каменю, кількість ресурсних плям.
-- Ландшафт: `FastNoiseLite` — два шари шуму (вода: озера та русла; камінь: скупчення), згладжування клітинним автоматом (2–3 ітерації).
-- Стартова точка: центр найбільшої зв'язної області ґрунту; навколо матки розчищається радіус 12.
-- Ресурсні плями: N плям по 3–12 клітин, кожна має спільний запас (наприклад, 10–60 одиниць). Запас плями — це кількість клітин гнізда, які з неї можна побудувати.
-- Стартова їжа: M предметів по 1–5 одиниць, щільніше біля старту.
-- Стартового гнізда немає: на розчищеній ділянці стоять матка і всі мірмеки, а стіни та склади треба побудувати до першої ночі. Клітина, де стоїть матка, стає `QUEEN_CHAMBER` без витрат ресурсів.
-- Гарантії старту: у радіусі 30 клітин від матки генеруються щонайменше дві ресурсні плями і близько 20 одиниць їжі, щоб перша доба була важкою, але можливою.
+- Input: seed, size, water share, rock share, number of resource patches.
+- Terrain: `FastNoiseLite`, two noise layers (water: lakes and channels; rock: clusters), smoothed by a cellular automaton (2–3 iterations).
+- Starting point: the centre of the largest connected ground region; a radius of 12 is cleared around the queen.
+- Resource patches: N patches of 3–12 cells, each with a shared reserve (for example, 10–60 units). A patch's reserve is the number of nest cells that can be built from it.
+- Starting food: M items of 1–5 units each, denser near the start.
+- There is no starting nest: the queen and all myrmeks stand on the cleared area, and walls and storages must be built before the first night. The cell where the queen stands becomes `QUEEN_CHAMBER` at no resource cost.
+- Start guarantees: within 30 cells of the queen, at least two resource patches and about 20 units of food are generated, so that the first day is hard but possible.
 
-### 3.4 Динаміка середовища
+### 3.4 Environment dynamics
 
-| Подія | Правило (параметри) |
+| Event | Rule (parameters) |
 |---|---|
-| Поява їжі | Кожні `T_food` тіків у кожному активному чанку з імовірністю `p_food` з'являється купка з 1–3 клітин по 1–5 одиниць |
-| Відновлення ресурсів | Вичерпана пляма через `T_res` тіків отримує новий запас; або з'являється нова пляма в активній зоні |
-| Поява хижаків | Підтримується цільова кількість кожного типу в активній зоні; нові з'являються на кільці 60–150 клітин від гнізда, поза зором гнізда |
-| Труп хижака | Стає предметом `FOOD` (кількість залежить від типу) — нагорода за оборону; носильники несуть його на склад як звичайну їжу |
-| Псування їжі | Немає в v1 (параметр `food_decay` для майбутнього) |
+| Food spawning | Every `T_food` ticks, in each active chunk, with probability `p_food`, a cluster of 1–3 cells with 1–5 units each appears |
+| Resource regeneration | A depleted patch gets a new reserve after `T_res` ticks, or a new patch appears in the active zone |
+| Predator spawning | A target count of each type is maintained in the active zone; new ones appear on a ring 60–150 cells from the nest, outside the nest's vision |
+| Predator carcass | Becomes a `FOOD` item (amount depends on the type), a reward for defence; carriers take it to storage like ordinary food |
+| Food spoilage | None in v1 (parameter `food_decay` for the future) |
 
 ---
 
-## 4. Час, день і ніч
+## 4. Time, day and night
 
-Тік — один крок симуляції. Швидкість агента задається як `move_cooldown` (скільки тіків минає між кроками): 1 — швидкий, 3 — повільний.
+A tick is one simulation step. An agent's speed is set as `move_cooldown` (how many ticks pass between steps): 1 is fast, 3 is slow.
 
-Цикл доби (параметри в тіках): день 600, сутінки 60, ніч 400, світанок 60. Разом 1120 тіків, тобто близько двох хвилин при 10 тіках/с.
+Day cycle (parameters in ticks): day 600, dusk 60, night 400, dawn 60. Total 1120 ticks, about two minutes at 10 ticks/s.
 
-**Вплив ночі:**
+**Effects of night:**
 
-- Хижаки: `move_cooldown` зменшується вдвічі, час поїдання мірмека скорочується вдвічі, радіус зору зростає на 50%.
-- Мірмеки: радіус зору зменшується на 1 (параметр).
-- Матка: політика на ніч (параметр): дослідники та носильники повертаються в гніздо, скільки вміщає внутрішня область (пріоритет — голодні та мірмеки з вантажем), решта збирається біля проходу під охороною; охоронці стають у проходах і біля них; у сутінках будівельники закривають проходи стіною, а на світанку розбирають її (`seal_at_night`, типово увімкнено); мірмеки, що лишилися зовні, ночують під стіною під охороною; якщо склад їжі нижчий за резерв — робота триває попри ризик.
-- Графіка: плавна зміна тону через `CanvasModulate`, тепле світло біля проходу в гніздо.
+- Predators: `move_cooldown` is halved, the time to eat a myrmek is halved, vision radius grows by 50%.
+- Myrmeks: vision radius decreases by 1 (parameter).
+- Queen: night policy (parameter): scouts and carriers return to the nest as far as the interior allows (priority to hungry myrmeks and those carrying cargo), the rest gather near the gap under guard; guards stand in and near the gaps; at dusk builders close the gaps with walls and at dawn tear them down (`seal_at_night`, on by default); myrmeks left outside spend the night by the wall under guard; if the food store is below the reserve, work continues despite the risk.
+- Graphics: smooth tone change via `CanvasModulate`, warm light near the nest gap.
 
-**Порядок фаз у кожному тіку:**
+**Phase order in every tick:**
 
-1. Середовище: годинник, спавн їжі і хижаків, відновлення ресурсів.
-2. Планування гнізда (матка) — кожні `N_plan` тіків (типово 10).
-3. Мірмеки: кожен виконує один крок свого автомата станів.
-4. Хижаки: те саме.
-5. Бій і смерті.
-6. Оновлення знань гнізда (відкриття клітин навколо мірмеків).
-7. Синхронізація графіки (лише якщо в цьому кадрі є рендер).
+1. Environment: clock, food and predator spawning, resource regeneration.
+2. Nest planning (queen), every `N_plan` ticks (default 10).
+3. Myrmeks: each performs one step of its state machine.
+4. Predators: the same.
+5. Combat and deaths.
+6. Nest knowledge update (revealing cells around myrmeks).
+7. Graphics sync (only if this frame is rendered).
 
 ---
 
-## 5. Агенти
+## 5. Agents
 
-### 5.1 Спільна модель
+### 5.1 Common model
 
-Поля агента: `id`, `kind` (мірмек або хижак), `type` (роль або вид), `nest_id`, `cell`, `hp`, `hp_max`, `energy`, `energy_max`, `move_cooldown`, `move_timer`, `vision`, `attack`, `carry` (тип, одиниці, місткість), `state`, `task_id`, `target_cell`, `path`. Віку в v1 немає: мірмек живе, доки його не з'їли і доки він не помер з голоду.
+Agent fields: `id`, `kind` (myrmek or predator), `type` (role or species), `nest_id`, `cell`, `hp`, `hp_max`, `energy`, `energy_max`, `move_cooldown`, `move_timer`, `vision`, `attack`, `carry` (type, units, capacity), `state`, `task_id`, `target_cell`, `path`. There is no age in v1: a myrmek lives until it is eaten or starves.
 
-### 5.2 Ролі мірмеків
+### 5.2 Myrmek roles
 
-| Роль | На старті | Параметри | Що робить |
+| Role | At start | Parameters | What it does |
 |---|---|---|---|
-| Дослідник | 15 | зір 5, cooldown 1, hp 3 | Іде до найближчої межі відомого світу ("фронтир"), відкриває клітини в радіусі 5. Матка розводить дослідників по різних секторах, щоб вони не товклися разом |
-| Охоронець | 20 | зір 4, cooldown 2, hp 20, атака 5 | Патрулює кільце навколо гнізда, перехоплює хижаків, яких видно на відомій карті, тримає проходи в стіні, супроводжує групи носильників і ресурсників у далеких рейсах, охороняє локації: пляму ресурсу, багате джерело їжі, ділянку дороги |
-| Будівельник | 15 | cooldown 2, hp 5, несе 1 ресурс, ставить стіну за 10 тіків, ламає за 5 | Бере ресурс зі складу або від носильника і ставить стіну, склад або покриття за планом. Може зламати будь-яку стіну: відкрити прохід, розібрати старе кільце, а на ніч закрити прохід і вранці знову відкрити; ресурс зі зламаної стіни повертається |
-| Носильник | 30 | cooldown 1, hp 4, несе 2 одиниці | Приносить їжу з карти на склад, переносить ресурси з куп на склад, доставляє їжу голодним мірмекам і ресурси будівельникам |
-| Ресурсник | 20 | cooldown 2, hp 5, несе 3 одиниці, видобуває 1 одиницю за 5 тіків | Працює на призначеній плямі; видобуте несе на склад сам або лишає купою біля плями, якщо матка призначила носильників |
-| Матка | 1 | нерухома, hp 50, енергія витрачається швидше | Координатор (розділ 6.2). У v1.1 — народжує мірмеків |
+| Scout | 15 | vision 5, cooldown 1, hp 3 | Goes to the nearest edge of the known world (the "frontier") and reveals cells within radius 5. The queen spreads scouts across different sectors so they don't crowd together |
+| Guard | 20 | vision 4, cooldown 2, hp 20, attack 5 | Patrols a ring around the nest, intercepts predators visible on the known map, holds the gaps in the wall, escorts groups of carriers and harvesters on long trips, guards locations: a resource patch, a rich food source, a stretch of road |
+| Builder | 15 | cooldown 2, hp 5, carries 1 resource, builds a wall in 10 ticks, demolishes in 5 | Takes a resource from storage or from a carrier and builds a wall, storage or paving according to the plan. Can demolish any wall: open a gap, dismantle an old ring, close a gap for the night and open it again in the morning; the resource from a demolished wall is returned |
+| Carrier | 30 | cooldown 1, hp 4, carries 2 units | Brings food from the map to storage, moves resources from piles to storage, delivers food to hungry myrmeks and resources to builders |
+| Harvester | 20 | cooldown 2, hp 5, carries 3 units, mines 1 unit per 5 ticks | Works on an assigned patch; carries what it mines to storage itself, or leaves it as a pile near the patch if the queen has assigned carriers |
+| Queen | 1 | stationary, hp 50, spends energy faster | Coordinator (section 6.2). In v1.1 she gives birth to myrmeks |
 
-Разом 100 робочих мірмеків і матка. Кількість кожної ролі — параметр стартової конфігурації.
+In total, 100 worker myrmeks plus the queen. The count of each role is a starting-configuration parameter.
 
-Усі мірмеки відкривають клітини навколо себе в радіусі 2; дослідники — в радіусі 5.
+All myrmeks reveal cells around themselves within radius 2; scouts within radius 5.
 
-### 5.3 Автомат станів мірмека
+### 5.3 Myrmek state machine
 
-Спільний каркас для всіх ролей: `IDLE` (чекає завдання в гнізді або на місці) → `GO_TO` (іде по шляху до цілі) → `WORK` (дія на місці: збір, видобуток, будівництво, патруль) → `RETURN` (повертається з вантажем) → `DEPOSIT` (складає на склад або передає сусідньому мірмеку) → `IDLE`.
+A common framework for all roles: `IDLE` (waiting for a task in the nest or on the spot) → `GO_TO` (following a path to the target) → `WORK` (on-site action: gathering, mining, building, patrolling) → `RETURN` (returning with cargo) → `DEPOSIT` (dropping it in storage or handing it to a neighbouring myrmek) → `IDLE`.
 
-Переривання: `HUNGRY` (енергія нижча за поріг — просить їжу або йде їсти), `FLEE` (робочий мірмек бачить хижака поруч — відходить від нього), `FIGHT` (лише охоронці), `DEAD`.
+Interrupts: `HUNGRY` (energy below the threshold: asks for food or goes to eat), `FLEE` (a working myrmek sees a predator nearby and moves away from it), `FIGHT` (guards only), `DEAD`.
 
-Передача вантажу можлива між будь-якими двома сусідніми мірмеками одного гнізда.
+Cargo can be handed between any two adjacent myrmeks of the same nest.
 
-### 5.4 Енергія і голод
+### 5.4 Energy and hunger
 
-| Параметр | Значення за замовчуванням |
+| Parameter | Default value |
 |---|---|
-| Максимум енергії | 100 |
-| Витрата в спокої | 0.01 за тік |
-| Витрата на крок | 0.05 за крок (з вантажем +50%; по покриттю 0.03) |
-| Витрата на атаку | 0.5 за атаку |
-| Поріг "голодний" | 40 — просить їжу, але продовжує завдання |
-| Поріг "критично" | 15 — кидає завдання, іде до гнізда або чекає носильника |
-| Одна одиниця їжі | +50 енергії |
-| Матка | 0.1 за тік; їсть зі складу автоматично; "не голодна" при енергії 70 і вище |
-| Смерть | енергія 0 |
+| Maximum energy | 100 |
+| Idle cost | 0.01 per tick |
+| Step cost | 0.05 per step (+50% with cargo; 0.03 on paving) |
+| Attack cost | 0.5 per attack |
+| "Hungry" threshold | 40: asks for food but continues its task |
+| "Critical" threshold | 15: drops its task, goes to the nest or waits for a carrier |
+| One unit of food | +50 energy |
+| Queen | 0.1 per tick; eats from storage automatically; "not hungry" at energy 70 and above |
+| Death | energy 0 |
 
-Мірмек у гнізді з непорожнім складом їсть сам. Голодному мірмеку далеко від дому матка призначає носильника з їжею.
+A myrmek in the nest with a non-empty storage eats by itself. For a hungry myrmek far from home, the queen assigns a carrier with food.
 
-**Оцінка балансу.** 100 мірмеків при середній витраті 0.05 за тік — 5 енергії за тік, тобто 0.1 одиниці їжі за тік, або близько 110 одиниць за добу (1120 тіків). Спавн їжі в активній зоні має давати не менше 120–150 одиниць за добу. Пропускна здатність 30 носильників при рейсі 100 клітин (200 тіків туди-назад по 2 одиниці) — 0.3 одиниці за тік, з запасом. Ці числа — стартова точка для налаштування.
+**Balance estimate.** 100 myrmeks at an average cost of 0.05 per tick is 5 energy per tick, i.e. 0.1 units of food per tick, or about 110 units per day (1120 ticks). Food spawning in the active zone should yield at least 120–150 units per day. The throughput of 30 carriers on a 100-cell trip (200 ticks round trip, 2 units each) is 0.3 units per tick, with margin. These numbers are a starting point for tuning.
 
-### 5.5 Хижаки
+### 5.5 Predators
 
-| Вид | Поведінка | Cooldown день / ніч | Зір день / ніч | hp | Атака | Час поїдання день / ніч | Труп → їжа |
+| Species | Behaviour | Cooldown day / night | Vision day / night | hp | Attack | Eating time day / night | Carcass → food |
 |---|---|---|---|---|---|---|---|
-| Павук | Засідка: сидить біля маршрутів, кидається на мірмека в полі зору | 2 / 1 | 6 / 9 | 15 | 4 | 20 / 10 | 5 |
-| Жук | Повільний танк: блукає, атакує все поруч, не втікає | 3 / 2 | 4 / 6 | 40 | 6 | 30 / 15 | 8 |
-| Ящірка | Швидкий мисливець: переслідує помічених мірмеків, вночі робить додатковий крок кожен другий тік, втікає при hp нижче 30% | 1 / 1+ | 8 / 12 | 25 | 5 | 15 / 6 | 6 |
+| Spider | Ambush: sits near routes, lunges at a myrmek in its field of view | 2 / 1 | 6 / 9 | 15 | 4 | 20 / 10 | 5 |
+| Beetle | Slow tank: wanders, attacks everything nearby, does not flee | 3 / 2 | 4 / 6 | 40 | 6 | 30 / 15 | 8 |
+| Lizard | Fast hunter: chases spotted myrmeks, at night takes an extra step every second tick, flees when hp is below 30% | 1 / 1+ | 8 / 12 | 25 | 5 | 15 / 6 | 6 |
 
-Спільні правила:
+Common rules:
 
-- Хижаки мають енергію; голодний полює, ситий блукає або відпочиває; без здобичі гине.
-- Автомат станів: `WANDER` → (бачить мірмека) `HUNT` → (сусідня клітина) `ATTACK` → (мірмек мертвий) `EAT` (зайнятий `eat_time` тіків, не рухається, вразливий) → `REST` або `WANDER`; `FLEE` для видів, що втікають.
-- Стіни непрохідні для хижаків так само, як для всіх. Хижак заходить у гніздо лише крізь відкритий прохід, і в проході він стає легкою ціллю для охоронців з обох боків.
-- Робочий мірмек гине з одного удару (атака хижака перевищує його hp). Охоронець витримує кілька ударів.
-- Цільова кількість кожного виду в активній зоні — параметр; спостерігач може додати хижаків вручну.
+- Predators have energy; a hungry one hunts, a sated one wanders or rests; without prey it dies.
+- State machine: `WANDER` → (sees a myrmek) `HUNT` → (adjacent cell) `ATTACK` → (myrmek dead) `EAT` (busy for `eat_time` ticks, does not move, vulnerable) → `REST` or `WANDER`; `FLEE` for species that flee.
+- Walls are as impassable to predators as to everyone else. A predator enters the nest only through an open gap, and in the gap it becomes an easy target for guards on both sides.
+- A working myrmek dies from a single blow (predator attack exceeds its hp). A guard survives several blows.
+- The target count of each species in the active zone is a parameter; the observer can add predators manually.
 
-### 5.6 Бій
+### 5.6 Combat
 
-Кожен тік агент з атакою, що має ворога в одній із 8 сусідніх клітин, завдає йому шкоду. Кілька охоронців навколо одного хижака складають шкоду. Хижак у проході атакується охоронцями і зсередини, і ззовні. Мертвий хижак стає їжею. Мертвий мірмек зникає (хижак його з'їв).
+Every tick, an agent with an attack value that has an enemy in one of the 8 neighbouring cells deals damage to it. Several guards around one predator add up their damage. A predator in a gap is attacked by guards both from inside and outside. A dead predator becomes food. A dead myrmek disappears (the predator ate it).
 
 ---
 
-## 6. Гніздо
+## 6. Nest
 
-### 6.1 Знання і туман війни
+### 6.1 Knowledge and fog of war
 
-Масив `known` на гніздо. Клітина стає відомою, коли будь-який мірмек гнізда бачить її. На відомих клітинах гніздо бачить поточний стан: об'єкти, споруди, хижаків. Невідомі клітини для гнізда не існують: туди не будують шлях і не призначають завдання.
+A `known` array per nest. A cell becomes known when any myrmek of the nest sees it. On known cells the nest sees the current state: objects, structures, predators. Unknown cells do not exist for the nest: no paths are built there and no tasks are assigned there.
 
-**Фронтир** — множина відомих прохідних клітин, що межують з невідомими. Підтримується інкрементально. Дослідники беруть найближчу фронтирну клітину у своєму секторі (сектори — кутові діапазони навколо гнізда, по одному на дослідника).
+**Frontier**: the set of known passable cells adjacent to unknown ones. Maintained incrementally. Scouts take the nearest frontier cell in their sector (sectors are angular ranges around the nest, one per scout).
 
-### 6.2 Матка як координатор
+### 6.2 The queen as coordinator
 
-Кожні `N_plan` тіків матка:
+Every `N_plan` ticks the queen:
 
-1. **Збирає стан:** відома незайнята їжа, купи, плями з запасом, хижаки на відомій карті, голодні мірмеки, черга будівництва, рівні складів, розмір фронтиру.
-2. **Формує дошку завдань:** завдання мають тип, ціль, пріоритет, виконавця. Типи: `EXPLORE`, `FETCH_FOOD`, `FETCH_PILE`, `HARVEST`, `BUILD`, `FEED_ANT`, `DELIVER_RES`, `PATROL`, `INTERCEPT`, `HOLD_GAP`, `OPEN_GAP`, `CLOSE_GAP`, `PAVE`, `ESCORT` (супровід групи), `GUARD_SITE` (охорона локації).
-3. **Ранжує:** безпека (хижак біля гнізда) → годування голодних → дохід їжі → будівництво → ресурси → розвідка. Ваги — параметри політики.
-4. **Призначає:** вільні мірмеки потрібної ролі беруть найближче завдання (жадібно, за полем відстаней). Завдання скасовується, якщо ціль зникла, і мірмек отримує нове.
-5. **Політика ночі** (розділ 4).
-6. **Стратегія оборони:** охоронці розподіляються між патрулем, проходами, супроводом і охороною локацій за вагами політики. Це і є простір для стратегій: «фортеця» (усі біля проходів, рейси лише короткі), «конвой» (кожна група носильників з охороною), «форпости» (охоронці стоять на плямах і біля їжі, дороги між ними) або адаптивна — ваги залежать від того, де останнім часом гинули мірмеки. У v1 стратегія — набір параметрів; пізніше матка може перемикати їх сама.
+1. **Gathers state:** known unclaimed food, piles, patches with reserves, predators on the known map, hungry myrmeks, the build queue, storage levels, frontier size.
+2. **Builds a task board:** tasks have a type, target, priority and assignee. Types: `EXPLORE`, `FETCH_FOOD`, `FETCH_PILE`, `HARVEST`, `BUILD`, `FEED_ANT`, `DELIVER_RES`, `PATROL`, `INTERCEPT`, `HOLD_GAP`, `OPEN_GAP`, `CLOSE_GAP`, `PAVE`, `ESCORT` (group escort), `GUARD_SITE` (guarding a location).
+3. **Ranks:** safety (predator near the nest) → feeding the hungry → food income → construction → resources → exploration. Weights are policy parameters.
+4. **Assigns:** free myrmeks of the required role take the nearest task (greedily, by distance field). A task is cancelled if its target disappears, and the myrmek gets a new one.
+5. **Night policy** (section 4).
+6. **Defence strategy:** guards are distributed between patrol, gaps, escort and site guarding according to policy weights. This is the space for strategies: "fortress" (everyone at the gaps, only short trips), "convoy" (every carrier group escorted), "outposts" (guards stand at patches and near food, with roads between them), or adaptive, where the weights depend on where myrmeks have recently died. In v1 the strategy is a set of parameters; later the queen can switch them herself.
 
-**Перша доба.** Поки гнізда немає, матка працює за стартовим планом: ресурсники йдуть на найближчу пляму, носильники переносять ресурс до матки і збирають їжу поруч, будівельники ставлять перше кільце стін навколо матки з одним проходом і склад їжі всередині, охоронці стоять кільцем навколо матки, доки стіни не замкнуться, дослідники відкривають околиці. Оцінка: кільце радіусом 5 — це близько 40 стін, тобто 40 ресурсів, і внутрішній простір приблизно на 70 мірмеків; 20 ресурсників добувають стільки за менш ніж півдня, тому стіни встигають вирости до ночі, якщо пляма недалеко. Хто не вміститься, ночує біля проходу під охороною.
+**The first day.** While there is no nest, the queen follows a starting plan: harvesters go to the nearest patch, carriers bring resources to the queen and gather food nearby, builders raise the first ring of walls around the queen with one gap and a food storage inside, guards stand in a ring around the queen until the walls close, scouts explore the surroundings. Estimate: a ring of radius 5 is about 40 walls, i.e. 40 resources, with interior space for roughly 70 myrmeks; 20 harvesters mine that much in less than half a day, so the walls go up before nightfall if the patch is close. Those who don't fit spend the night by the gap under guard.
 
-У v1.1 сюди додається рішення про народження (розділ 12).
+In v1.1 the birth decision is added here (section 12).
 
-### 6.3 Мозок матки: стратегія як програма
+### 6.3 The queen's brain: strategy as a program
 
-Планування з 6.2 — це тактичний рівень: він щоразу перетворює стан на дошку завдань за поточною політикою. Стратегічний рівень над ним видає не окремі команди, а **програму стратегії**: код із функцією `plan()`, який матка виконує сама на кожному циклі планування і який визначає політику на найближчі тіки. Програма і є стратегією. Вона не роздає завдань, не рухає мірмеків і не бачить нічого поза відомою картою гнізда; усе, що відбувається між циклами, робить тактичний рівень сам.
+The planning in 6.2 is the tactical level: each time it turns the state into a task board according to the current policy. The strategic level above it produces not individual commands but a **strategy program**: code with a `plan()` function that the queen runs herself on every planning cycle and that defines the policy for the next ticks. The program is the strategy. It does not hand out tasks, does not move myrmeks and sees nothing beyond the nest's known map; everything that happens between cycles is done by the tactical level on its own.
 
-**Мова програми.** Стратегія — це справжній код, а не набір ваг: модуль з функцією `plan(s) -> policy`, яку матка викликає на кожному циклі планування, і таблицею `memory`, що живе між викликами. У прототипі стратегії пишуться на GDScript і завантажуються на льоту (`GDScript.new()`, `source_code`, `reload()`): це нуль залежностей і одна мова в проєкті. У v1 виконавцем стає Lua 5.4 через розширення godot-luaAPI, бо вона дає справжню пісочницю (стратегія не бачить `os`, `io`, `require`, `load` і нічого з рушія) і лічильник інструкцій, що перериває `plan()` при зацикленні; GDScript із рушія не ізолюєш. Обидва варіанти ховаються за інтерфейсом `StrategyRunner`, тож заміна мови не чіпає решту коду. Приклад на Lua (GDScript-варіант відрізняється лише синтаксисом):
+**Program language.** The strategy is real code, not a set of weights: a module with a `plan(s) -> policy` function that the queen calls on every planning cycle, and a `memory` table that persists between calls. In the prototype strategies are written in GDScript and loaded on the fly (`GDScript.new()`, `source_code`, `reload()`): zero dependencies and a single language in the project. In v1 the runtime becomes Lua 5.4 via the godot-luaAPI extension, because it provides a real sandbox (the strategy cannot see `os`, `io`, `require`, `load` or anything from the engine) and an instruction counter that interrupts `plan()` on an infinite loop; GDScript cannot be isolated from the engine. Both variants sit behind a `StrategyRunner` interface, so changing the language does not touch the rest of the code. Example in Lua (the GDScript variant differs only in syntax):
 
 ```
 memory = memory or { lost_last_day = 0 }
@@ -227,386 +227,386 @@ function plan(s)
 end
 ```
 
-**Що бачить стратегія.** Доступ не автоматичний, а через явну «вітрину стану» `StateView`, спільну для обох мов і для опису API, який отримує LLM. Прості величини складаються перед викликом у словник і в Lua стають таблицею-копією: фаза доби, населення за ролями, смерті за причинами, склади й енергія матки, відома їжа, плями і хижаки з відстанями, фронтир, місткість гнізда проти населення, стан проходів. Великі структури (карта, список агентів) не копіюються: замість них стратегія має функції-помічники, які виконуються на боці рушія — `predators_within(r)`, `nearest_food_dist()`, `patch_reserve(id)`, `cell(x, y)`. Об'єкт `World` стратегії не передається ніколи, лише `StateView` з методами читання. Назад повертається таблиця політики: ваги ранжування, розподіл охоронців, нічна політика, план будівництва, поріг мостіння, запас місткості, а з v1.1 — бажаний склад ролей; вона перетворюється на `Dictionary` і проходить перевірку схеми й меж. Виклик `plan()` коштує мікросекунди.
+**What the strategy sees.** Access is not automatic but goes through an explicit "state window", `StateView`, shared by both languages and by the API description given to the LLM. Simple values are assembled into a dictionary before the call and become a copied table in Lua: day phase, population by role, deaths by cause, storages and the queen's energy, known food, patches and predators with distances, the frontier, nest capacity versus population, gap status. Large structures (the map, the agent list) are not copied: instead the strategy has helper functions that run on the engine side, such as `predators_within(r)`, `nearest_food_dist()`, `patch_reserve(id)`, `cell(x, y)`. The `World` object is never passed to the strategy, only a `StateView` with read methods. What comes back is a policy table: ranking weights, guard distribution, night policy, build plan, paving threshold, capacity margin, and from v1.1 the desired role composition; it is converted to a `Dictionary` and checked against the schema and value bounds. A call to `plan()` costs microseconds.
 
-**Безпека виконання.** У прототипі, де пісочниці немає, нову версію стратегії захищають два дешеві засоби: статична перевірка тексту за списком дозволених ідентифікаторів (локальні змінні, арифметика, умови, цикли по діапазонах, звернення до `s`, `p` і `memory`) і сухий прогін в окремому потоці з таймаутом. У v1 це замінює пісочниця Lua з лімітом інструкцій; на сервері (v1.3), де можуть з'явитися чужі стратегії, Lua обов'язкова.
+**Execution safety.** In the prototype, where there is no sandbox, a new strategy version is protected by two cheap measures: static checking of the text against a whitelist of identifiers (local variables, arithmetic, conditions, loops over ranges, access to `s`, `p` and `memory`) and a dry run in a separate thread with a timeout. In v1 this is replaced by the Lua sandbox with an instruction limit; on the server (v1.3), where third-party strategies may appear, Lua is mandatory.
 
-**Хто пише програму** — параметр `queen_brain`:
+**Who writes the program**: the `queen_brain` parameter:
 
-| Режим | Хто пише програму | Коли змінюється |
+| Mode | Who writes the program | When it changes |
 |---|---|---|
-| `PROGRAM` | Людина, або раніше написана і збережена програма з бібліотеки | Ніколи сама; база для порівнянь |
-| `LLM` | Мовна модель: пише програму на старті за описом мови й стану, потім переглядає її за результатами | За подіями (перша ніч, хижак у гнізді, масові смерті, порожній склад), за дією `request_revision` у самій програмі і не частіше ніж раз на `N_revision` тіків |
-| `LEARNED` (v2) | Мала нейромережа підбирає параметри або обирає програму з бібліотеки; коли досвіду немає — питає LLM | На кожному циклі планування; LLM — лише за низької впевненості |
+| `PROGRAM` | A human, or a previously written program saved in the library | Never by itself; the baseline for comparisons |
+| `LLM` | A language model: writes the program at the start from a description of the language and state, then revises it based on results | On events (first night, predator in the nest, mass deaths, empty storage), on the `request_revision` action in the program itself, and no more often than once every `N_revision` ticks |
+| `LEARNED` (v2) | A small neural network tunes parameters or picks a program from the library; when it lacks experience, it asks the LLM | On every planning cycle; the LLM only at low confidence |
 
-**Як працює режим LLM.** На старті модель отримує опис мови (GDScript у прототипі, Lua у v1), API `StateView` і полів політики, мету гнізда і стартову ситуацію, а повертає програму. Далі вона втручається рідко: при перегляді їй передають чинну програму, звіт про стан, метрики з минулого перегляду (смерті за причинами, зібрана їжа, ночі без втрат) і журнал того, які гілки коду спрацьовували, а вона повертає нову версію програми з коротким описом змін для журналу. Кожна версія проходить перевірку: компіляцію, статичний аналіз або пісочницю, межі значень політики і сухий прогін на записаних станах минулої доби, щоб помилка не поклала симуляцію; версія, що не пройшла, відкидається, і далі працює попередня. Модель ніколи не керує окремим мірмеком.
+**How LLM mode works.** At the start the model receives a description of the language (GDScript in the prototype, Lua in v1), the `StateView` API and policy fields, the nest's goal and the starting situation, and returns a program. After that it intervenes rarely: on revision it receives the current program, a state report, metrics since the last revision (deaths by cause, food collected, nights without losses) and a log of which code branches fired, and it returns a new version of the program with a short description of the changes for the log. Every version is validated: compilation, static analysis or sandbox, policy value bounds, and a dry run on recorded states from the previous day, so that a bug cannot bring the simulation down; a version that fails is discarded and the previous one keeps running. The model never controls an individual myrmek.
 
-Виклик асинхронний (`HTTPRequest`), симуляція не чекає: доки нова версія в дорозі, працює чинна програма. Щоб не сипати запитами на швидкості 16x, є мінімальний інтервал у реальних секундах. Основна модель — Gemini 3.1 Pro через Google AI API; провайдер абстрагований, тож поруч є OpenAI-сумісний API, Anthropic, локальний Ollama і `MOCK` для тестів, який повертає програму з файлу. Ключі зберігаються в локальній конфігурації поза проєктом; з v1.3 — лише на сервері. Кожна версія програми пишеться в журнал разом із тіком, тож збереження і повтор відтворюють забіг з LLM без повторних викликів.
+The call is asynchronous (`HTTPRequest`) and the simulation does not wait: while a new version is in flight, the current program keeps running. To avoid flooding requests at 16x speed, there is a minimum interval in real-time seconds. The main model is Gemini 3.1 Pro via the Google AI API; the provider is abstracted, so alongside it there are an OpenAI-compatible API, Anthropic, local Ollama, and `MOCK` for tests, which returns a program from a file. Keys are stored in a local configuration outside the project; from v1.3, only on the server. Every program version is written to the log together with its tick, so saving and replay reproduce a run with the LLM without repeating the calls.
 
-**Бібліотека стратегій.** Програми зберігаються як файли (`user://strategies/`), мають назву, версію та історію переглядів; їх можна читати, правити руками, підкладати як `PROGRAM` і ганяти на тому самому seed у headless-режимі, отримуючи таблицю результатів — «арену стратегій». Це і спосіб оцінити, чи справді програма від моделі краща за написану людиною, і майданчик для експериментів із промптами й моделями. У v2 програма стає геномом матки: дочірня матка успадковує її, а перегляд моделлю за метриками виконує роль мутації (розділ 12). У v2 кожне гніздо матиме свою матку зі своєю моделлю або персоною, а між ними можлива дипломатія.
+**Strategy library.** Programs are stored as files (`user://strategies/`) with a name, version and revision history; they can be read, edited by hand, plugged in as `PROGRAM` and run on the same seed in headless mode to produce a results table, a "strategy arena". This is both a way to check whether the model's program is really better than a human-written one and a playground for experiments with prompts and models. In v2 the program becomes the queen's genome: a daughter queen inherits it, and revision by the model based on metrics plays the role of mutation (section 12). In v2 each nest will have its own queen with its own model or persona, and diplomacy between them becomes possible.
 
-### 6.4 Гніздо як споруда
+### 6.4 The nest as a structure
 
-Розкладка: `QUEEN_CHAMBER` у центрі, поруч `STORAGE_FOOD` і `STORAGE_RES`, навколо — звичайний ґрунт, обгороджений замкненим кільцем `NEST_WALL` з одним або кількома проходами. Прохід — це клітина ґрунту без стіни, а не окремий тип споруди.
+Layout: `QUEEN_CHAMBER` in the centre, next to it `STORAGE_FOOD` and `STORAGE_RES`, around them ordinary ground enclosed by a closed ring of `NEST_WALL` with one or more gaps. A gap is a ground cell without a wall, not a separate structure type.
 
-«Всередині» обчислюється, а не будується: заливка від камери матки, яка не перетинає стін і зупиняється на клітинах проходів. Усі прохідні клітини цієї області — внутрішній простір гнізда, а їх кількість — його місткість.
+"Inside" is computed, not built: a flood fill from the queen chamber that does not cross walls and stops at gap cells. All passable cells of this region are the nest's interior, and their count is its capacity.
 
-Правила:
+Rules:
 
-- Стіна непрохідна для всіх. Прохід пропускає будь-кого, по одному агенту на клітину, тому один охоронець у проході фізично блокує його.
-- Будівельник може поставити стіну на будь-яку клітину ґрунту (наприклад, закрити прохід) і зламати будь-яку стіну за `demolish_time` тіків (відкрити прохід, розібрати старе кільце, пробити стіну зсередини, якщо гніздо оточене). Ресурс зі зламаної стіни повертається на склад. Так гніздо саме вирішує, скільки проходів мати і коли їх закривати.
-- Нічна політика за замовчуванням: у сутінках усі проходи закриваються стіною, на світанку — відкриваються (`seal_at_night`). Поки гніздо закрите, хижак усередину не потрапить узагалі, тож нічна оборона зводиться до охорони тих, хто не вмістився.
-- Місткість складу: 20 одиниць на клітину складу кожного типу.
-- Вартість: стіна — 1 ресурс, клітина складу — 2 ресурси; внутрішній простір нічого не коштує.
-- План розширення: цільова місткість дорівнює населенню плюс запас (параметр, типово 10%), бо на клітині може бути лише один мірмек. Коли місткості не вистачає або склади повні, матка планує нове, ширше кільце стін; після його замикання старе кільце розбирається, а ресурс повертається на склад. Черга: спочатку стіни нового кільця з проходами, потім склади. Добудова гнізда до розміру, що вміщає всіх, — перша велика мета будівельників.
-- Будівельник бере 1 ресурс зі складу (або від носильника поруч), іде до клітини плану, ставить її за `build_time` тіків.
+- Walls are impassable to everyone. A gap lets anyone through, one agent per cell, so a single guard in a gap physically blocks it.
+- A builder can place a wall on any ground cell (for example, to close a gap) and demolish any wall in `demolish_time` ticks (open a gap, dismantle an old ring, break through a wall from inside if the nest is surrounded). The resource from a demolished wall returns to storage. This way the nest itself decides how many gaps to have and when to close them.
+- Default night policy: at dusk all gaps are closed with walls and at dawn they are opened (`seal_at_night`). While the nest is sealed, a predator cannot get inside at all, so night defence comes down to guarding those who didn't fit.
+- Storage capacity: 20 units per storage cell of each type.
+- Cost: a wall is 1 resource, a storage cell is 2 resources; interior space costs nothing.
+- Expansion plan: the target capacity equals the population plus a margin (parameter, default 10%), because only one myrmek fits in a cell. When capacity runs short or storages are full, the queen plans a new, wider ring of walls; once it closes, the old ring is dismantled and the resource returns to storage. Order: first the walls of the new ring with gaps, then the storages. Building the nest to a size that fits everyone is the builders' first major goal.
+- A builder takes 1 resource from storage (or from a nearby carrier), goes to the planned cell and builds it in `build_time` ticks.
 
-**Покриття і дороги.** `PAVEMENT` — споруда на клітині ґрунту, по якій мірмеки рухаються швидше: `move_cooldown` ділиться на `pave_speed` (типово 2, мінімум 1 тік), а витрата енергії на крок менша. Покриття кладуть і всередині гнізда, щоб швидше діставатися складів і матки, і назовні як дороги до плям ресурсів та багатих на їжу місць. Правила:
+**Paving and roads.** `PAVEMENT` is a structure on a ground cell over which myrmeks move faster: `move_cooldown` is divided by `pave_speed` (default 2, minimum 1 tick), and the energy cost per step is lower. Paving is laid both inside the nest, to reach storages and the queen faster, and outside as roads to resource patches and food-rich areas. Rules:
 
-- Вартість — 1 ресурс за клітину, ставиться за `build_time`, ламається як стіна з поверненням ресурсу. Стіна, поставлена на покриття, замінює його.
-- Матка планує дороги за трафіком: гніздо веде лічильник проходів по кожній відомій клітині (згасає з часом); клітини з трафіком вище порогу `pave_traffic` потрапляють у чергу `PAVE` після стін і складів. Так дороги виростають самі вздовж реальних маршрутів і не будуються до вичерпаних плям.
-- Хижаки переваги від покриття не мають: дороги прискорюють лише мірмеків.
-- Покриття не рахується як «всередині» саме по собі: внутрішній простір, як і раніше, визначають стіни.
+- Cost: 1 resource per cell, built in `build_time`, demolished like a wall with the resource returned. A wall placed on paving replaces it.
+- The queen plans roads by traffic: the nest keeps a pass counter for each known cell (decaying over time); cells with traffic above the `pave_traffic` threshold go into the `PAVE` queue after walls and storages. This way roads grow by themselves along real routes and are not built to depleted patches.
+- Predators get no benefit from paving: roads speed up only myrmeks.
+- Paving does not count as "inside" by itself: the interior is still defined by the walls.
 
-### 6.5 Потоки їжі та ресурсів
+### 6.5 Food and resource flows
 
 ```
-Пляма ресурсу --(ресурсник видобуває)--> вантаж або купа біля плями
-   --(ресурсник або носильник)--> склад ресурсів --(будівельник)--> стіна або склад гнізда
+Resource patch --(harvester mines)--> cargo or pile near the patch
+   --(harvester or carrier)--> resource storage --(builder)--> wall or nest storage
 
-Їжа на карті --(носильник)--> склад їжі --> матка, голодні мірмеки в гнізді
-                                         --(носильник)--> голодні мірмеки в полі
-Труп хижака --> їжа на карті
+Food on the map --(carrier)--> food storage --> queen, hungry myrmeks in the nest
+                                            --(carrier)--> hungry myrmeks in the field
+Predator carcass --> food on the map
 ```
 
 ---
 
-## 7. Спостерігач і UI
+## 7. Observer and UI
 
-| Елемент | Зміст |
+| Element | Content |
 |---|---|
-| Камера | Панорамування (WASD, край екрана, перетягування), масштаб 8 / 16 / 32 / 48 px на клітину, клік по мінікарті переносить камеру |
-| Мінікарта | 256x256 px, один піксель — блок (розмір світу / 256) клітин: для 2048 — 8x8, для 512 — 2x2. Пріоритет кольору в блоці: невідомо (чорний) > хижак (червоний) > мірмек (білий) > їжа (жовтий) > ресурс (коричневий) > гніздо (помаранчевий) > покриття (бежевий) > вода (синій) > камінь (сірий) > ґрунт (зелений). Оновлюється лише для змінених чанків раз на `N_map` тіків. Рамка поточного вікна перегляду. Перемикач "справжня карта" без туману |
-| Керування часом | Пауза, множники швидкості, один крок вперед, лічильник дня і тіка, індикатор фази доби |
-| Збереження | Автоматичне: гніздо зберігається саме на кожному світанку, при виході з гри і перед застосуванням нової версії стратегії, а при запуску гра продовжується з останнього автозбереження без запитань. В інтерфейсі лише позначка «збережено: день N, час», кнопка «новий світ» і список збережених днів, з якого можна повернутися назад; ручне збереження в іменований слот — опція (F5), а не обов'язок |
-| Інструменти втручання | Покласти їжу (кількість), створити пляму ресурсу, викликати хижака (вид), видалити об'єкт або агента, вилікувати, відкрити область карти |
-| Інспектор | Клік по мірмеку або хижаку: роль або вид, стан, енергія, hp, завдання, шлях (малюється на карті). Клік по клітині: вміст усіх шарів |
-| Параметри | Панель з живими повзунками: частота їжі, нічні множники, витрати енергії, ваги політики матки, цільові кількості хижаків; перемикач `queen_brain` і вибір провайдера LLM |
-| Матка | Чинна програма стратегії з підсвіткою гілок коду, що спрацювали на останньому циклі; поточна політика; в режимі LLM — історія версій з описами змін і часом відповіді; кнопки «переглянути зараз» і «зберегти в бібліотеку» |
-| Підключення (v1.3) | Адреса сервера і токен, стан з'єднання, затримка, кількість підключених спостерігачів; при обриві клієнт перепідключається і отримує новий знімок |
-| Статистика | Населення за ролями, смерті за причинами (голод, хижак), склади, відсоток відомої карти, кількість хижаків; графіки за останні N діб |
-| Журнал подій | Смерті, вичерпання плями, вбитий хижак, хижак у гнізді, відкритий або закритий прохід, нове кільце гнізда; у v1.1 — народження |
+| Camera | Panning (WASD, screen edge, dragging), zoom 8 / 16 / 32 / 48 px per cell, clicking the minimap moves the camera |
+| Minimap | 256x256 px, one pixel is a block of (world size / 256) cells: 8x8 for 2048, 2x2 for 512. Colour priority within a block: unknown (black) > predator (red) > myrmek (white) > food (yellow) > resource (brown) > nest (orange) > paving (beige) > water (blue) > rock (grey) > ground (green). Updated only for changed chunks once every `N_map` ticks. A frame shows the current viewport. A "true map" toggle without fog |
+| Time control | Pause, speed multipliers, single step forward, day and tick counter, day-phase indicator |
+| Saving | Automatic: the nest saves itself at every dawn, on exit and before applying a new strategy version, and on launch the game continues from the latest autosave without asking. The interface only has a "saved: day N, time" label, a "new world" button and a list of saved days to go back to; manual saving to a named slot is an option (F5), not an obligation |
+| Intervention tools | Place food (amount), create a resource patch, summon a predator (species), delete an object or agent, heal, reveal an area of the map |
+| Inspector | Click a myrmek or predator: role or species, state, energy, hp, task, path (drawn on the map). Click a cell: contents of all layers |
+| Parameters | A panel with live sliders: food frequency, night multipliers, energy costs, queen policy weights, target predator counts; a `queen_brain` toggle and LLM provider selection |
+| Queen | The current strategy program with highlighting of the code branches that fired on the last cycle; the current policy; in LLM mode, the version history with change descriptions and response times; "revise now" and "save to library" buttons |
+| Connection (v1.3) | Server address and token, connection status, latency, number of connected observers; on disconnect the client reconnects and receives a new snapshot |
+| Statistics | Population by role, deaths by cause (starvation, predator), storages, percentage of the map known, number of predators; charts for the last N days |
+| Event log | Deaths, patch depletion, predator killed, predator in the nest, gap opened or closed, new nest ring; in v1.1, births |
 
 ---
 
-## 8. Графіка
+## 8. Graphics
 
-Логіка клітинна, картинка вільна. Стиль — векторний: прості фігури, м'які градієнти й тіні, без пікселів. Малюється спрайтами в Godot: кожен об'єкт — SVG-файл у `res://art/`, який Godot растеризує при імпорті у високій роздільності (128 px на клітину, з mipmap), тож картинка лишається різкою на всіх зумах від 8 до 48 px. Спрайти базово білі або сірі там, де колір змінний, а роль, фаза доби чи стан задаються через `modulate`.
+The logic is cellular, the picture is free. The style is vector: simple shapes, soft gradients and shadows, no pixels. It is drawn with sprites in Godot: each object is an SVG file in `res://art/`, which Godot rasterizes on import at high resolution (128 px per cell, with mipmaps), so the image stays sharp at all zoom levels from 8 to 48 px. Sprites are white or grey where the colour varies, and role, day phase or state are applied via `modulate`.
 
-- Ландшафт і гніздо: `TileMapLayer` з terrain sets для автоплиток (береги води, краї каменю, стіни гнізда, краї покриття). Рендериться лише вікно навколо камери (буфер приблизно 128x96 плиток), яке перезаповнюється при русі камери.
-- Їжа, ресурси, купи: `Sprite2D` з SVG-спрайтами в межах вікна.
-- Мірмеки: `MultiMeshInstance2D` з одним SVG-спрайтом мірмека як текстурою, по одному екземпляру на мірмека, з кольором ролі через колір екземпляра і поворотом у напрямку руху; окремий маленький спрайт вантажу над головою. Між тіками позиція плавно інтерполюється, тож рух виглядає безперервним, хоча логіка стрибає по клітинах.
-- Хижаки: окремі `AnimatedSprite2D` з кількома SVG-кадрами (їх мало), візуально більші за клітину.
-- День і ніч: `CanvasModulate` з градієнтом за фазою, `PointLight2D` біля проходу в гніздо.
-- Художні ресурси: набір SVG невеликий (ґрунт, вода, камінь, стіна, покриття, склади, камера матки, їжа, ресурс, купа, мірмек, вантаж, три хижаки, кілька маркерів UI), тож його можна намалювати самостійно або згенерувати кодом і зберегти як SVG.
+- Terrain and nest: `TileMapLayer` with terrain sets for autotiling (water shores, rock edges, nest walls, paving edges). Only a window around the camera is rendered (a buffer of about 128x96 tiles), refilled as the camera moves.
+- Food, resources, piles: `Sprite2D` with SVG sprites within the window.
+- Myrmeks: `MultiMeshInstance2D` with a single myrmek SVG sprite as the texture, one instance per myrmek, with the role colour via the instance colour and rotation in the direction of movement; a separate small cargo sprite above the head. Positions are smoothly interpolated between ticks, so movement looks continuous even though the logic jumps from cell to cell.
+- Predators: separate `AnimatedSprite2D` with a few SVG frames (there are few predators), visually larger than a cell.
+- Day and night: `CanvasModulate` with a gradient by phase, `PointLight2D` near the nest gap.
+- Art assets: the SVG set is small (ground, water, rock, wall, paving, storages, queen chamber, food, resource, pile, myrmek, cargo, three predators, a few UI markers), so it can be drawn by hand or generated by code and saved as SVG.
 
 ---
 
-## 9. Архітектура проєкту в Godot
+## 9. Godot project architecture
 
 ```
-res://sim/        чиста симуляція, без Node
-  world.gd        масиви шарів, чанки, доступ до клітин
-  worldgen.gd     генерація за seed
-  clock.gd        тіки, фази доби
-  agent.gd        базова модель агента
-  myrmek.gd       автомат станів мірмека за роллю
-  predator.gd     автомат станів хижака за видом
-  nest.gd         знання, фронтир, склади, споруди гнізда, план будівництва
-  queen_ai.gd     тактичне планування і дошка завдань
-  strategy.gd     StrategyRunner: інтерфейс і GDScript-виконавець (прототип); StateView і помічники
-  strategy_lua.gd Lua-виконавець через godot-luaAPI (v1): пісочниця, ліміт інструкцій, конвертація таблиць
-  queen_policy.gd режими PROGRAM / LLM, перевірка і сухий прогін нових версій, бібліотека
-  nest_report.gd  збирання StateView для стратегії і звіту для LLM (змінні, помічники, JSON)
-  tasks.gd        типи і життєвий цикл завдань
-  pathfinding.gd  поле відстаней, локальний A*
-  combat.gd       бій, смерті
-  spawner.gd      їжа, ресурси, хижаки в активній зоні
-  rng.gd          єдиний seeded генератор
-  save.gd         серіалізація стану, слоти, автозбереження
-res://app/        головна сцена v1: цикл тіків і рендер в одному процесі
-res://server/     (v1.3) головна сцена сервера: цикл тіків, приймання клієнтів, журнал команд, автозбереження
-res://client/     (v1.3) головна сцена клієнта: з'єднання, локальна копія стану, камера
-res://net/        (v1.3) протокол: формати повідомлень, знімок, дельти, версії чанків, команди
-res://view/       рендер: world_view (вікно плиток), agents_view (MultiMesh), minimap, daynight
+res://sim/        pure simulation, no Node
+  world.gd        layer arrays, chunks, cell access
+  worldgen.gd     generation from seed
+  clock.gd        ticks, day phases
+  agent.gd        base agent model
+  myrmek.gd       myrmek state machine by role
+  predator.gd     predator state machine by species
+  nest.gd         knowledge, frontier, storages, nest structures, build plan
+  queen_ai.gd     tactical planning and task board
+  strategy.gd     StrategyRunner: interface and GDScript runner (prototype); StateView and helpers
+  strategy_lua.gd Lua runner via godot-luaAPI (v1): sandbox, instruction limit, table conversion
+  queen_policy.gd PROGRAM / LLM modes, validation and dry run of new versions, library
+  nest_report.gd  assembling StateView for the strategy and the report for the LLM (variables, helpers, JSON)
+  tasks.gd        task types and lifecycle
+  pathfinding.gd  distance field, local A*
+  combat.gd       combat, deaths
+  spawner.gd      food, resources, predators in the active zone
+  rng.gd          single seeded generator
+  save.gd         state serialization, slots, autosave
+res://app/        v1 main scene: tick loop and rendering in one process
+res://server/     (v1.3) server main scene: tick loop, accepting clients, command log, autosave
+res://client/     (v1.3) client main scene: connection, local state copy, camera
+res://net/        (v1.3) protocol: message formats, snapshot, deltas, chunk versions, commands
+res://view/       rendering: world_view (tile window), agents_view (MultiMesh), minimap, daynight
 res://ui/         hud, inspector, params_panel, stats, tools, connect
-res://llm/        провайдери (gemini, openai_compat, anthropic, ollama, mock), опис API StateView і політики для моделі, промпти
-res://data/       Resource-файли: roles.tres, predators.tres, sim_params.tres
-res://tests/      gdUnit4 або GUT: тести симуляції без рендеру (headless)
+res://llm/        providers (gemini, openai_compat, anthropic, ollama, mock), StateView and policy API description for the model, prompts
+res://data/       Resource files: roles.tres, predators.tres, sim_params.tres
+res://tests/      gdUnit4 or GUT: simulation tests without rendering (headless)
 ```
 
-**Пошук шляху** без глобального A* на 4 млн точок:
+**Pathfinding** without a global A* over 4 million points:
 
-- Поле відстаней до гнізда (`PackedInt32Array`), зважений BFS (Дейкстра з цілими вагами) лише по відомих прохідних клітинах: крок по покриттю коштує 1, по ґрунту — `pave_speed`. Перераховується інкрементально при відкритті клітин і зміні споруд або повністю раз на 100 тіків. Повернення додому — спуск по градієнту без пошуку.
-- Локальний `AStarGrid2D` на прямокутнику між мірмеком і ціллю з полем 16 клітин, лише по відомих клітинах, з `weight_scale` для покриття; будується за запитом і звільняється.
-- Дослідники: ціль на фронтирі плюс локальний A*; резерв — випадкове блукання.
-- Шлях кешується в агенті; перепланування, коли наступна клітина зайнята кілька тіків поспіль.
+- A distance field to the nest (`PackedInt32Array`): weighted BFS (Dijkstra with integer weights) only over known passable cells; a step on paving costs 1, on ground `pave_speed`. Recomputed incrementally when cells are revealed and structures change, or fully once every 100 ticks. Returning home is gradient descent without search.
+- A local `AStarGrid2D` on the rectangle between the myrmek and its target with a 16-cell margin, only over known cells, with `weight_scale` for paving; built on request and released.
+- Scouts: a target on the frontier plus local A*; fallback is a random walk.
+- The path is cached in the agent; replanning happens when the next cell is occupied for several ticks in a row.
 
-**Пам'ять (для 2048x2048):** ландшафт 4 МБ, споруди 4 МБ, знання 4 МБ на гніздо, поле відстаней 16 МБ на гніздо, об'єкти і агенти — розріджені. Разом близько 30 МБ на гніздо.
+**Memory (for 2048x2048):** terrain 4 MB, structures 4 MB, knowledge 4 MB per nest, distance field 16 MB per nest; objects and agents are sparse. About 30 MB per nest in total.
 
-**Продуктивність:** 100 мірмеків при 10 тіках/с — тривіально навіть на 16x. 5000 мірмеків — 50 тисяч кроків агентів за секунду, прийнятно для GDScript, якщо крок дешевий, а BFS і A* амортизовані. Понад це — симуляція лише активних чанків і GDExtension.
+**Performance:** 100 myrmeks at 10 ticks/s is trivial even at 16x. 5000 myrmeks is 50 thousand agent steps per second, acceptable for GDScript if a step is cheap and BFS and A* are amortized. Beyond that: simulating only active chunks, and GDExtension.
 
-**Збереження і завантаження.** Оскільки симуляція — це чисті дані, збереження зводиться до серіалізації: версія формату, seed і параметри, годинник (тік, фаза доби, номер дня), масиви шарів (ландшафт, споруди, знання), розріджені словники об'єктів і агентів, стан гнізда (склади, дошка завдань, план і черга будівництва, фронтир), стан RNG. Запис — `var_to_bytes` у стиснений файл через `FileAccess.open_compressed` (орієнтовно кілька мегабайтів на слот), поруч — короткий JSON-заголовок (версія, seed, день, населення, дата) для списку слотів. Після завантаження повністю перебудовуються рендер, мінікарта і поле відстаней. Формат має поле версії; сумісність зі старішими збереженнями в v1 не гарантується. У v1 збереження лежать локально в `user://`; з v1.3 — на сервері, а клієнт лише бачить список збережень і надсилає команди.
+**Save and load.** Since the simulation is pure data, saving comes down to serialization: format version, seed and parameters, clock (tick, day phase, day number), layer arrays (terrain, structures, knowledge), sparse dictionaries of objects and agents, nest state (storages, task board, build plan and queue, frontier), RNG state. Writing uses `var_to_bytes` into a compressed file via `FileAccess.open_compressed` (roughly a few megabytes per slot), alongside a short JSON header (version, seed, day, population, date) for the slot list. After loading, the rendering, minimap and distance field are fully rebuilt. The format has a version field; compatibility with older saves is not guaranteed in v1. In v1 saves are stored locally in `user://`; from v1.3 on the server, and the client only sees the save list and sends commands.
 
-**Збереження автоматичне.** Гравець не повинен пам'ятати про нього: стан пишеться сам на кожному світанку (`autosave_ticks`), при виході з гри, перед застосуванням нової версії стратегії і за бажанням кожні N хвилин реального часу. Зберігаються останні три автозбереження плюс по одному на кожен день симуляції, старіші видаляються. При запуску гра сама продовжує з останнього автозбереження; «новий світ» — окрема свідома дія. Щоб запис не зупиняв симуляцію, серіалізація йде в окремому потоці з копії масивів (кілька мегабайтів копіюються за мілісекунди), а файл пишеться спершу в тимчасове ім'я і лише потім перейменовується, тож збій під час запису не псує попереднє збереження.
+**Saving is automatic.** The player should not have to remember it: the state is written by itself at every dawn (`autosave_ticks`), on exit, before applying a new strategy version and, optionally, every N minutes of real time. The last three autosaves are kept plus one for each simulation day; older ones are deleted. On launch the game continues from the latest autosave by itself; "new world" is a separate deliberate action. So that writing does not stall the simulation, serialization runs in a separate thread from a copy of the arrays (a few megabytes are copied in milliseconds), and the file is first written under a temporary name and only then renamed, so a crash during writing does not corrupt the previous save.
 
 ---
 
-## 10. Параметри за замовчуванням
+## 10. Default parameters
 
-| Група | Параметр | Значення |
+| Group | Parameter | Value |
 |---|---|---|
-| Світ | розмір | 2048x2048 (задається при генерації; мінімум 256x256, кратно 64) |
-| | чанк | 64x64 |
-| | частка води / каменю | 12% / 10% |
-| | ресурсні плями | 40 в активній зоні на старті, по 10–60 одиниць |
-| | стартова їжа | 60 предметів по 1–5 одиниць |
-| | радіус активної зони | 200 клітин від гнізда плюс відомі чанки |
-| Час | тіків за секунду | 10 |
-| | день / сутінки / ніч / світанок | 600 / 60 / 400 / 60 тіків |
-| | планування матки | кожні 10 тіків |
-| Гніздо | склад ролей | 15 / 20 / 15 / 30 / 20 (дослідник / охоронець / будівельник / носильник / ресурсник) |
-| | резерв їжі на складі | 20 одиниць |
-| | старт | матка і 100 мірмеків на відкритій ділянці, без споруд; у радіусі 30 клітин — 2 ресурсні плями і 20 одиниць їжі |
-| | `seal_at_night` | увімкнено |
-| Їжа | `T_food` / `p_food` | 200 тіків / 0.3 на активний чанк |
-| Ресурси | `T_res` | 3000 тіків |
-| Хижаки | цільова кількість (павук / жук / ящірка) | 3 / 2 / 2 |
-| | кільце появи | 60–150 клітин від гнізда |
-| Мозок матки | `queen_brain` | `PROGRAM` (стартова програма з бібліотеки) |
-| | `N_revision` | 1120 тіків (не частіше ніж раз на добу, крім подій) |
-| | мінімальний інтервал LLM | 60 реальних секунд |
-| | провайдер LLM | Gemini 3.1 Pro (Google AI API); `MOCK` у тестах |
-| Мережа (v1.3) | `net_rate` | 10 пакетів на секунду на клієнта |
-| | `net_margin` | 8 клітин навколо кадру камери |
-| | порт і доступ | WebSocket за Caddy або nginx (`wss://`), токен у конфігурації сервера |
-| Будівництво | `build_time` | 10 тіків на клітину |
-| | `demolish_time` | 5 тіків на клітину |
-| Покриття | `pave_speed` | 2 (cooldown ділиться на 2, мінімум 1) |
-| | вартість | 1 ресурс за клітину |
-| | `pave_traffic` | 30 проходів за добу по клітині |
-| Збереження | `autosave_ticks` | 1120 (кожен світанок); також при виході і перед новою версією стратегії |
-| | що зберігається | останні 3 автозбереження плюс по одному на день симуляції |
-| | при запуску | продовжити з останнього автозбереження |
+| World | size | 2048x2048 (set at generation; minimum 256x256, multiple of 64) |
+| | chunk | 64x64 |
+| | water / rock share | 12% / 10% |
+| | resource patches | 40 in the active zone at start, 10–60 units each |
+| | starting food | 60 items of 1–5 units each |
+| | active zone radius | 200 cells from the nest plus known chunks |
+| Time | ticks per second | 10 |
+| | day / dusk / night / dawn | 600 / 60 / 400 / 60 ticks |
+| | queen planning | every 10 ticks |
+| Nest | role composition | 15 / 20 / 15 / 30 / 20 (scout / guard / builder / carrier / harvester) |
+| | food reserve in storage | 20 units |
+| | start | queen and 100 myrmeks on open ground, no structures; within 30 cells, 2 resource patches and 20 units of food |
+| | `seal_at_night` | on |
+| Food | `T_food` / `p_food` | 200 ticks / 0.3 per active chunk |
+| Resources | `T_res` | 3000 ticks |
+| Predators | target count (spider / beetle / lizard) | 3 / 2 / 2 |
+| | spawn ring | 60–150 cells from the nest |
+| Queen's brain | `queen_brain` | `PROGRAM` (starting program from the library) |
+| | `N_revision` | 1120 ticks (no more than once a day, except on events) |
+| | minimum LLM interval | 60 real seconds |
+| | LLM provider | Gemini 3.1 Pro (Google AI API); `MOCK` in tests |
+| Network (v1.3) | `net_rate` | 10 packets per second per client |
+| | `net_margin` | 8 cells around the camera frame |
+| | port and access | WebSocket behind Caddy or nginx (`wss://`), token in the server configuration |
+| Construction | `build_time` | 10 ticks per cell |
+| | `demolish_time` | 5 ticks per cell |
+| Paving | `pave_speed` | 2 (cooldown divided by 2, minimum 1) |
+| | cost | 1 resource per cell |
+| | `pave_traffic` | 30 passes per day per cell |
+| Saving | `autosave_ticks` | 1120 (every dawn); also on exit and before a new strategy version |
+| | what is kept | last 3 autosaves plus one per simulation day |
+| | on launch | continue from the latest autosave |
 
 ---
 
-## 11. Прототип «Перша ніч» (v0)
+## 11. Prototype "First Night" (v0)
 
-Мета прототипу — за кілька сесій розробки отримати живе гніздо, на якому можна оцінити три речі: як виглядає векторна графіка на різних зумах, чи цікаво спостерігати за симуляцією (ролі, економіка їжі, перша ніч) і чи працює цикл «звіт → Gemini → план → зміна поведінки». Прототип не є окремою кодовою базою: це v1 з урізаним обсягом, тож усе, що тут написано, потім лише розширюється.
+The goal of the prototype is to get a living nest within a few development sessions, on which three things can be evaluated: how the vector graphics look at different zoom levels, whether the simulation is interesting to watch (roles, food economy, the first night), and whether the "report → Gemini → plan → behaviour change" loop works. The prototype is not a separate codebase: it is v1 with a reduced scope, so everything written here is only extended later.
 
-### 11.1 Що лишається без компромісів
+### 11.1 What stays without compromise
 
-Чиста симуляція в масивах окремо від рендеру; детермінований seed і дискретні тіки; один агент на клітину; енергія і голод у всіх; туман війни з фронтиром; стіни, проходи і закриття проходів на ніч; день і ніч із нічними множниками хижака; старт без гнізда; векторні SVG-спрайти та `MultiMesh` для мірмеків.
+Pure simulation in arrays separate from rendering; deterministic seed and discrete ticks; one agent per cell; energy and hunger for everyone; fog of war with a frontier; walls, gaps and closing gaps for the night; day and night with predator night multipliers; start without a nest; vector SVG sprites and `MultiMesh` for myrmeks.
 
-### 11.2 Спрощення
+### 11.2 Simplifications
 
-| Область | У прототипі | Повертається у v1 |
+| Area | In the prototype | Returns in v1 |
 |---|---|---|
-| Світ | 256x256, без чанків і активної зони; глобальний BFS по всьому світу; мінікарта 1 піксель на клітину | Розмір до 2048, чанки, активна зона |
-| Ролі | Три: **робочий** (об'єднує дослідника, носильника і ресурсника: несе, якщо є що нести; добуває, якщо є пляма; інакше йде на фронтир), **будівельник** (стіни, склади, проходи), **охоронець** (патруль і проходи). Передачі вантажу між мірмеками немає | Дослідник, носильник і ресурсник як спеціалізації робочого; передача вантажу |
-| Населення | 40: 22 робочих, 8 будівельників, 10 охоронців, і матка | Близько 100 у шести ролях |
-| Хижаки | Лише павук, з нічними множниками | Жук і ящірка |
-| Охоронці | Патруль і проходи | Супровід, охорона локацій, стратегії оборони |
-| Будівництво | Стіни і склади; план гнізда — фіксовані кільця, що ростуть із населенням | Покриття і дороги за трафіком |
-| Мозок матки | `PROGRAM` і `LLM`. Стратегія — GDScript-модуль з `plan(s)`, завантажений на льоту, зі статичною перевіркою і сухим прогоном. API `StateView` крихітний: близько десяти змінних стану (фаза, населення, смерті з світанку, їжа на складі, найближча їжа, хижаки в радіусі, чи замкнене кільце, місткість проти населення, стан проходів) і шість полів політики (вага їжі проти будівництва, частка охоронців у проходах, закривати проходи на ніч, радіус кільця, частка робочих на ресурсі, пріоритет будівництва). LLM пише програму на старті і переглядає її після першої ночі та за подією «понад три смерті з світанку». Провайдери — Gemini 3.1 Pro і `MOCK`, який читає програму з файлу | Lua-виконавець із пісочницею, повний API, бібліотека стратегій, арена |
-| Графіка | Плоскі плитки без автоплиток; два зуми, 16 і 32 px; `CanvasModulate` для ночі; без світла біля проходу | Автоплитки, чотири зуми, світло |
-| UI | Камера; пауза і швидкості 1x, 4x, 16x; мінікарта; клік по мірмеку з базовим інспектором; статистика (населення, їжа, смерті); журнал подій; панель матки з останнім планом і поясненням; два втручання — покласти їжу і випустити павука. Параметри правляться у `.tres` | Панель параметрів, повний інспектор, усі втручання |
-| Збереження | Лише автоматичне: один файл, запис на світанку і при виході, при запуску гра продовжує з нього; без слотів і ручного збереження | Ротація автозбережень, список днів, іменовані слоти |
-| Вирізано повністю | Повтор, покриття і дороги, супровід, ескалація хижаків, тести як окрема система (лишається headless-запуск із виводом статистики в консоль) | Усе це у v1 і далі |
+| World | 256x256, no chunks and no active zone; global BFS over the whole world; minimap 1 pixel per cell | Size up to 2048, chunks, active zone |
+| Roles | Three: **worker** (combines scout, carrier and harvester: carries if there is something to carry; mines if there is a patch; otherwise goes to the frontier), **builder** (walls, storages, gaps), **guard** (patrol and gaps). No cargo handover between myrmeks | Scout, carrier and harvester as worker specializations; cargo handover |
+| Population | 40: 22 workers, 8 builders, 10 guards, plus the queen | About 100 in six roles |
+| Predators | Spider only, with night multipliers | Beetle and lizard |
+| Guards | Patrol and gaps | Escort, site guarding, defence strategies |
+| Construction | Walls and storages; the nest plan is fixed rings that grow with the population | Paving and roads by traffic |
+| Queen's brain | `PROGRAM` and `LLM`. The strategy is a GDScript module with `plan(s)`, loaded on the fly, with static checking and a dry run. The `StateView` API is tiny: about ten state variables (phase, population, deaths since dawn, food in storage, nearest food, predators within a radius, whether the ring is closed, capacity versus population, gap status) and six policy fields (food versus construction weight, share of guards at gaps, close gaps at night, ring radius, share of workers on resources, construction priority). The LLM writes the program at the start and revises it after the first night and on the "more than three deaths since dawn" event. Providers: Gemini 3.1 Pro and `MOCK`, which reads the program from a file | Lua runner with sandbox, full API, strategy library, arena |
+| Graphics | Flat tiles without autotiling; two zoom levels, 16 and 32 px; `CanvasModulate` for night; no light near the gap | Autotiling, four zoom levels, light |
+| UI | Camera; pause and speeds 1x, 4x, 16x; minimap; click on a myrmek with a basic inspector; statistics (population, food, deaths); event log; queen panel with the latest plan and explanation; two interventions: place food and release a spider. Parameters are edited in `.tres` | Parameters panel, full inspector, all interventions |
+| Saving | Automatic only: one file, written at dawn and on exit, on launch the game continues from it; no slots and no manual saving | Autosave rotation, list of days, named slots |
+| Cut entirely | Replay, paving and roads, escort, predator escalation, tests as a separate system (a headless run printing statistics to the console remains) | All of this in v1 and later |
 
-### 11.3 Критерії оцінки
+### 11.3 Evaluation criteria
 
-- Графіка приємна на обох зумах, і 40 мірмеків на швидкості 16x не просаджують кадри.
-- Без LLM гніздо переживає першу ніч щонайменше в половині сідів, тобто баланс не зламаний.
-- План від Gemini приходить менш ніж за десять секунд і видимо змінює поведінку: після втрат більше охоронців стає біля проходів, при нестачі місця раніше починається нове кільце.
+- The graphics look good at both zoom levels, and 40 myrmeks at 16x speed do not drop frames.
+- Without the LLM the nest survives the first night in at least half of the seeds, i.e. the balance is not broken.
+- The plan from Gemini arrives in less than ten seconds and visibly changes behaviour: after losses more guards stand at the gaps, and when space runs short a new ring starts earlier.
 
-### 11.4 Порядок ітерацій
+### 11.4 Iteration order
 
-1. Симуляція і генератор світу в headless-режимі з виводом статистики в консоль; серіалізація стану і автозбереження в один файл.
-2. Рендер, камера, мінікарта, день і ніч.
-3. Три ролі, будівництво гнізда, перша ніч.
-4. Павук, бій, смерті.
-5. Цикл LLM спершу з `MOCK`, потім із Gemini; панель матки.
-6. Інспектор, втручання, журнал подій.
+1. Simulation and world generator in headless mode with statistics printed to the console; state serialization and autosave to a single file.
+2. Rendering, camera, minimap, day and night.
+3. Three roles, nest construction, the first night.
+4. Spider, combat, deaths.
+5. The LLM loop, first with `MOCK`, then with Gemini; the queen panel.
+6. Inspector, interventions, event log.
 
-Орієнтовний обсяг — три-чотири тисячі рядків GDScript.
+Estimated size: three to four thousand lines of GDScript.
 
 ---
 
-## 12. Дорожня карта
+## 12. Roadmap
 
-**v0 — прототип «Перша ніч»** (розділ 11).
+**v0: prototype "First Night"** (section 11).
 
-**v1.0 — ця специфікація.**
+**v1.0: this specification.**
 
-**v1.1 — народження.** Матка кожного циклу планування перевіряє: енергія не нижча за 70 і на складі є хоча б одна одиниця понад резерв. Тоді вона споживає одну одиницю їжі і народжує `N_birth` мірмеків (типово 3) ролі з найбільшим дефіцитом проти бажаного складу. Бажаний склад матка рахує з потреб: великий фронтир — більше дослідників, помічені хижаки — більше охоронців, довга черга будівництва — більше будівельників, багато відомої їжі — більше носильників.
+**v1.1: births.** On every planning cycle the queen checks: energy is at least 70 and storage holds at least one unit above the reserve. If so, she consumes one unit of food and gives birth to `N_birth` myrmeks (default 3) of the role with the largest deficit against the desired composition. The queen computes the desired composition from needs: a large frontier means more scouts, spotted predators mean more guards, a long build queue means more builders, lots of known food means more carriers.
 
-**v1.2 — повтор.** Журнал втручань спостерігача поверх seed, щоб відтворити будь-який забіг з початку без збереження повного стану.
+**v1.2: replay.** A log of observer interventions on top of the seed, to reproduce any run from the start without saving the full state.
 
-**v1.3 — серверна симуляція і клієнти.** Симуляція переїжджає на Linux-сервер і працює безперервно; клієнти лише спостерігають і втручаються. Текст нижче — це план для цієї версії, збережений повністю.
+**v1.3: server-side simulation and clients.** The simulation moves to a Linux server and runs continuously; clients only observe and intervene. The text below is the plan for this version, preserved in full.
 
-**Сервер** — той самий проєкт, запущений як `godot --headless --server` (окрема головна сцена). Він виконує цикл тіків із власною швидкістю, приймає підключення через `WebSocketMultiplayerPeer`, застосовує команди клієнтів на межі тіка і пише їх у журнал, кличе LLM, робить автозбереження. Кілька клієнтів можуть дивитися одну симуляцію одночасно. Розгортання: домашня Linux-машина, systemd-сервіс або Docker-образ з headless-експортом, перед ним Caddy або nginx, який роздає веб-клієнт, термінує TLS (`wss://`) і додає заголовки COOP/COEP, потрібні Godot у браузері. Доступ ззовні домашньої мережі — через тунель або VPN на розсуд власника. Доступ — за одним спільним токеном у конфігурації сервера, однаковим для всіх клієнтів; облікові записи і ролі не плануються.
+**Server**: the same project, launched as `godot --headless --server` (a separate main scene). It runs the tick loop at its own speed, accepts connections via `WebSocketMultiplayerPeer`, applies client commands at tick boundaries and logs them, calls the LLM, and makes autosaves. Several clients can watch one simulation at the same time. Deployment: a home Linux machine, a systemd service or a Docker image with a headless export, with Caddy or nginx in front, which serves the web client, terminates TLS (`wss://`) and adds the COOP/COEP headers required by Godot in the browser. Access from outside the home network is through a tunnel or VPN at the owner's discretion. Access is via a single shared token in the server configuration, the same for all clients; accounts and roles are not planned.
 
-**Клієнт** нічого не симулює: він тримає локальну копію лише того, що бачить, малює її і надсилає команди. Один проєкт експортується у веб (основний варіант, працює на Mac, iPad і телефоні) та в нативну аплікацію для macOS. Між оновленнями позиції агентів інтерполюються, тож рух плавний навіть при рідших пакетах.
+**Client** simulates nothing: it keeps a local copy of only what it sees, draws it and sends commands. One project is exported to the web (the main option, works on Mac, iPad and phone) and as a native macOS application. Agent positions are interpolated between updates, so movement is smooth even with less frequent packets.
 
-**Що передається: не весь світ, а знімок один раз і далі лише зміни.**
+**What is transmitted: not the whole world, but a snapshot once and then only changes.**
 
-| Потік | Коли | Що саме | Орієнтовний обсяг |
+| Stream | When | What exactly | Approximate size |
 |---|---|---|---|
-| Знімок | При підключенні або після втрати синхронізації | Годинник, параметри, чинна політика, стан гнізда (склади, проходи, план), маска відомих клітин, ландшафт і споруди відомих чанків, усі об'єкти й агенти на відомій карті, статистика, останні події; усе стиснуте | 100–500 КБ для типового гнізда; повний ландшафт 2048x2048 не надсилається, невідомі чанки клієнт отримує, коли їх відкриють або коли ввімкнено «справжню карту» |
-| Дельта області | До `net_rate` разів на секунду (типово 10), незалежно від швидкості симуляції | Агенти в прямокутнику камери з полем `net_margin` клітин: позиція, напрямок, стан, вантаж, hp; зміни клітин у цій області | близько 12 байтів на агента; при 100 агентах у кадрі — до 12 КБ/с |
-| Глобальні зміни | Кожен пакет, лише коли є | Нові відомі клітини, поставлені та зламані споруди, поява та зникнення об'єктів, смерті й народження, події журналу | Розріджено, десятки байтів на подію |
-| Мінікарта | Раз на `N_map` тіків | Лише змінені блоки мінікарти у вигляді індексів палітри | 1–3 КБ/с |
-| Статистика і матка | Раз на секунду | Населення, склади, лічильники смертей, поточна політика, версія програми стратегії і останні зміни | сотні байтів |
+| Snapshot | On connection or after losing sync | Clock, parameters, current policy, nest state (storages, gaps, plan), known-cells mask, terrain and structures of known chunks, all objects and agents on the known map, statistics, recent events; all compressed | 100–500 KB for a typical nest; the full 2048x2048 terrain is not sent, the client receives unknown chunks when they are discovered or when "true map" is on |
+| Area delta | Up to `net_rate` times per second (default 10), independent of simulation speed | Agents in the camera rectangle with a margin of `net_margin` cells: position, direction, state, cargo, hp; cell changes in this area | about 12 bytes per agent; with 100 agents in frame, up to 12 KB/s |
+| Global changes | Every packet, only when present | Newly known cells, built and demolished structures, objects appearing and disappearing, deaths and births, log events | Sparse, tens of bytes per event |
+| Minimap | Once every `N_map` ticks | Only changed minimap blocks, as palette indices | 1–3 KB/s |
+| Statistics and queen | Once per second | Population, storages, death counters, current policy, strategy program version and latest changes | hundreds of bytes |
 
-Клієнт повідомляє сервер про свою камеру (прямокутник у клітинах); при русі камери він запитує повний стан чанків, яких ще не має або чиї версії застаріли, і далі отримує дельти. Кожен чанк і кожен пакет мають номер версії: пропущений номер означає розсинхронізацію, і клієнт просить новий знімок. Команди від клієнта: керування часом, втручання (розділ 7), зміна параметрів, режим і провайдер матки, збереження та завантаження, запит чанків. Повідомлення — бінарні (`PackedByteArray` з фіксованими полями), стиснуті при розмірі понад кілобайт.
+The client tells the server its camera (a rectangle in cells); when the camera moves it requests the full state of chunks it does not yet have or whose versions are outdated, and then receives deltas. Every chunk and every packet has a version number: a missing number means desynchronization, and the client requests a new snapshot. Client commands: time control, interventions (section 7), parameter changes, queen mode and provider, save and load, chunk requests. Messages are binary (`PackedByteArray` with fixed fields), compressed when larger than a kilobyte.
 
-При 100 мірмеках і одному глядачі трафік не перевищує 20 КБ/с; при 5000 мірмеках обсяг залежить від того, скільки з них у кадрі, а не від населення, бо мінікарта і статистика — агрегати.
+With 100 myrmeks and one viewer, traffic does not exceed 20 KB/s; with 5000 myrmeks the volume depends on how many of them are in frame, not on the population, because the minimap and statistics are aggregates.
 
-**v2 — кілька гнізд.** `nest_id` уже є в кожному агенті і кожному масиві знань; сервер уже приймає кількох клієнтів, тож у кожного гнізда може бути свій спостерігач із правами втручання лише над ним; додаються окремі споруди і склади для кожного гнізда, ворожість між гніздами, бої мірмеків з мірмеками, крадіжка їжі, територія, облога: будівельники ворожого гнізда можуть ламати чужі стіни. Мінікарта показує гнізда різними кольорами.
+**v2: multiple nests.** `nest_id` is already in every agent and every knowledge array; the server already accepts multiple clients, so each nest can have its own observer with intervention rights over that nest only. Added: separate structures and storages per nest, hostility between nests, myrmek-versus-myrmek combat, food theft, territory, and siege: builders of an enemy nest can demolish someone else's walls. The minimap shows nests in different colours.
 
-**v2 — матки-LLM для кількох гнізд.** У кожного гнізда своя модель або персона; спільний канал для дипломатії (перемир'я, обмін, погрози), який теж проходить через журнал.
+**v2: LLM queens for multiple nests.** Each nest has its own model or persona; a shared channel for diplomacy (truces, trade, threats), which also goes through the log.
 
-**v2 — еволюція.** Ознаки мірмека (швидкість, зір, атака, ефективність енергії, місткість) з мутацією при народженні; відбір через виживання і внесок у їжу.
+**v2: evolution.** Myrmek traits (speed, vision, attack, energy efficiency, capacity) with mutation at birth; selection through survival and contribution to food.
 
-**v2 — навчання матки: програма як геном.** Оскільки стратегія — це програма, навчання означає покращення програми за результатами, а не підбір ваг у чорній скриньці. Три механізми, від простого до складного:
+**v2: queen learning: the program as a genome.** Since the strategy is a program, learning means improving the program based on results, not tuning weights in a black box. Three mechanisms, from simple to complex:
 
-- Перегляд за метриками. Після кожної доби гніздо рахує результат (смерті за причинами, зібрана їжа, ночі без втрат, ріст місткості) і показує LLM, які гілки стратегії спрацьовували і що з того вийшло; модель переписує програму. Це вже є у v1 як режим `LLM`, тут додається довша пам'ять: історія версій з результатами, щоб модель не поверталася до вже провалених ідей.
-- Арена й відбір. Кілька програм ганяються на однакових seed у headless-режимі; найкращі лишаються в бібліотеці, гірші відкидаються. Модель отримує пари «програма — результат» і пише нові кандидати, тобто виконує роль мутації і схрещування зі змістом.
-- Режим `LEARNED`. Мала нейромережа підбирає числові параметри програми (ваги, пороги, радіуси) за станом і досвідом або обирає програму з бібліотеки; коли впевненості бракує (розбіжність ансамблю або новий стан), матка питає LLM і запам'ятовує відповідь. Обмеження те саме: усе це лише стратегія, тактика лишається алгоритмічною.
+- Revision by metrics. After each day the nest computes its results (deaths by cause, food collected, nights without losses, capacity growth) and shows the LLM which strategy branches fired and what came of it; the model rewrites the program. This already exists in v1 as the `LLM` mode; here a longer memory is added: a version history with results, so the model does not return to ideas that already failed.
+- Arena and selection. Several programs are run on the same seeds in headless mode; the best remain in the library, the worse are discarded. The model receives "program — result" pairs and writes new candidates, i.e. it plays the role of mutation and crossover with meaning.
+- `LEARNED` mode. A small neural network tunes the program's numerical parameters (weights, thresholds, radii) based on state and experience, or picks a program from the library; when confidence is lacking (ensemble disagreement or a novel state), the queen asks the LLM and remembers the answer. The constraint is the same: all of this is strategy only, tactics remain algorithmic.
 
-Програма разом із підібраними параметрами і є «геном матки»: дочірня матка успадковує її, а перегляд моделлю та відбір на арені грають роль мутації. Так еволюція йде не лише на рівні мірмеків (ознаки тіла), а й на рівні гнізд (стратегія): виживають і множаться ті лінії маток, чиї гнізда доживають до поділу.
+The program together with its tuned parameters is the "queen's genome": a daughter queen inherits it, and revision by the model and selection in the arena play the role of mutation. This way evolution happens not only at the level of myrmeks (body traits) but also at the level of nests (strategy): the lines of queens whose nests survive to split are the ones that persist and multiply.
 
-**v2 — поділ гнізда (роїння).** Сита матка з надлишком їжі може народити нову матку. Дочірня матка виходить із гнізда з невеликим супроводом, а далі народжує власних мірмеків — уже зі своїм `nest_id` — і обирає місце для нового гнізда. Між рідним і новим гніздом діє таймер спорідненості `kin_timer`: доки він не вийшов, рідне гніздо вважає дочірню матку та її виводок своїми — не нападає, пропускає крізь проходи, а її мірмеки можуть брати їжу з рідного складу в межах ліміту. Коли час виходить, спорідненість зникає і рідне гніздо ставиться до нового як до будь-якого чужого: нападає на його мірмеків, а стратегії оборони й облоги (v2, кілька гнізд) працюють у повну силу. Дочірня матка успадковує геном матері з мутацією, тож два сусідні гнізда з одного кореня можуть повестися по-різному, і це прямий матеріал для порівняння стратегій. Технічно: таблиця спорідненості між гніздами з таймерами, народження матки як окреме рішення політики, вибір місця для гнізда за відомою картою матері (передається дочці на момент виходу).
+**v2: nest splitting (swarming).** A well-fed queen with a food surplus can give birth to a new queen. The daughter queen leaves the nest with a small escort, then gives birth to her own myrmeks, now with her own `nest_id`, and chooses a site for a new nest. A kinship timer `kin_timer` runs between the parent nest and the new one: until it expires, the parent nest considers the daughter queen and her brood its own: it does not attack them, lets them through its gaps, and her myrmeks may take food from the parent storage within a limit. When time runs out, kinship ends and the parent nest treats the new one like any other foreign nest: it attacks its myrmeks, and the defence and siege strategies (v2, multiple nests) work at full strength. The daughter queen inherits her mother's genome with mutation, so two neighbouring nests from the same root can behave differently, which is direct material for comparing strategies. Technically: a kinship table between nests with timers, the birth of a queen as a separate policy decision, and choosing a nest site from the mother's known map (passed to the daughter at the moment she leaves).
 
-**Далі:** максимальний вік мірмека (у v1 віку немає), пам'ять "останній відомий стан" замість живого огляду, копання ґрунту, погода, псування їжі, звук.
-
----
-
-## 13. Відкриті питання
-
-Відкритих питань немає: усі рішення концепту ухвалено. Нові питання додаються сюди в міру появи.
+**Later:** maximum myrmek age (there is no age in v1), "last known state" memory instead of live observation, digging ground, weather, food spoilage, sound.
 
 ---
 
-## 14. Історія змін
+## 13. Open questions
+
+There are no open questions: all concept decisions have been made. New questions are added here as they arise.
+
+---
+
+## 14. Change history
 
 **v0.19 (27.09.2026)**
 
-- Закрито два останні відкриті питання для v1.3: доступ до сервера — один спільний токен для всіх клієнтів, без облікових записів; хостинг — домашня Linux-машина, зовнішній доступ через тунель або VPN (12). Розділ 13 порожній.
+- Closed the last two open questions for v1.3: server access is a single shared token for all clients, without accounts; hosting is a home Linux machine, with external access through a tunnel or VPN (12). Section 13 is empty.
 
 **v0.18 (27.09.2026)**
 
-- За вашим зауваженням збереження стало автоматичним: запис на кожному світанку, при виході і перед новою версією стратегії, продовження з останнього автозбереження при запуску, ротація (останні три плюс по одному на день), запис у потоці з копії масивів і через тимчасовий файл (9, 7, 10).
-- У прототип повернуто мінімальне автозбереження в один файл із продовженням при запуску; додано до першої ітерації (11).
+- Per your feedback, saving became automatic: written at every dawn, on exit and before a new strategy version, continuing from the latest autosave on launch, rotation (last three plus one per day), writing in a thread from a copy of the arrays and via a temporary file (9, 7, 10).
+- Minimal autosave to a single file with continuation on launch returned to the prototype; added to the first iteration (11).
 
 **v0.17 (27.09.2026)**
 
-- За вашим рішенням мова стратегії — справжній код замість JSON-правил: у прототипі GDScript, завантажений на льоту, зі статичною перевіркою і сухим прогоном; у v1 Lua 5.4 через godot-luaAPI з пісочницею і лімітом інструкцій; обидва за інтерфейсом `StrategyRunner` (6.3, 9, 11).
-- Додано абзац «Що бачить стратегія»: доступ не автоматичний, а через `StateView` — копія простих величин, функції-помічники для великих структур, об'єкт `World` не передається (6.3). Приклад програми переписано на Lua.
-- Оновлено обсяг v1 (1), рядок «Мозок матки» (2), опис перевірки версій у режимі LLM (6.3), вміст `res://llm` (9).
+- Per your decision, the strategy language is real code instead of JSON rules: GDScript loaded on the fly in the prototype, with static checking and a dry run; in v1, Lua 5.4 via godot-luaAPI with a sandbox and instruction limit; both behind the `StrategyRunner` interface (6.3, 9, 11).
+- Added the paragraph "What the strategy sees": access is not automatic but goes through `StateView`, a copy of simple values plus helper functions for large structures; the `World` object is not passed (6.3). The example program was rewritten in Lua.
+- Updated the v1 scope (1), the "Queen's brain" row (2), the description of version validation in LLM mode (6.3), and the contents of `res://llm` (9).
 
 **v0.16 (27.09.2026)**
 
-- За вашою ідеєю стратегія матки стала програмою: підрозділ 6.3 переписано — LLM не видає план на горизонт, а пише і переглядає програму правил (JSON з умовами на Godot `Expression`, діями над політикою і пам'яттю), яку матка виконує сама на кожному циклі. Режими тепер `PROGRAM` і `LLM` (плюс `LEARNED` у v2); режим `ADAPTIVE` зник, бо адаптивні правила — це просто програма. Додано перевірку версій сухим прогоном і бібліотеку стратегій з ареною.
-- Оновлено обсяг v1 (1), рядок «Мозок матки» у ключових рішеннях (2), панель матки в UI (7), файли `strategy.gd`, `queen_policy.gd`, `nest_report.gd` і вміст `res://llm` (9), параметри `queen_brain` і `N_revision` замість `N_policy` (10), рядок «Мозок матки» у прототипі з крихітною мовою правил (11).
-- Пункт «навчання матки» в дорожній карті переписано як «програма як геном»: перегляд за метриками, арена й відбір, режим `LEARNED` для параметрів програми (12).
+- Following your idea, the queen's strategy became a program: subsection 6.3 was rewritten. The LLM no longer produces a plan for a horizon but writes and revises a rule program (JSON with conditions in Godot `Expression`, actions on the policy and memory) that the queen runs herself on every cycle. The modes are now `PROGRAM` and `LLM` (plus `LEARNED` in v2); the `ADAPTIVE` mode disappeared, because adaptive rules are just a program. Added validation of versions by dry run and a strategy library with an arena.
+- Updated the v1 scope (1), the "Queen's brain" row in key decisions (2), the queen panel in the UI (7), the files `strategy.gd`, `queen_policy.gd`, `nest_report.gd` and the contents of `res://llm` (9), the `queen_brain` and `N_revision` parameters instead of `N_policy` (10), and the "Queen's brain" row in the prototype with a tiny rule language (11).
+- The "queen learning" item in the roadmap was rewritten as "the program as a genome": revision by metrics, arena and selection, `LEARNED` mode for program parameters (12).
 
 **v0.15 (27.09.2026)**
 
-- Додано розділ 11 «Прототип "Перша ніч" (v0)»: мета, що лишається без компромісів, таблиця спрощень (світ 256x256, три ролі — робочий, будівельник, охоронець, 40 мірмеків, лише павук, мінімальний план матки з `FIXED` і `LLM`, урізані графіка та UI, вирізані збереження і дороги), критерії оцінки і порядок ітерацій.
-- Колишні розділи 11–13 стали 12–14; у дорожню карту додано рядок v0.
+- Added section 11 "Prototype 'First Night' (v0)": goal, what stays without compromise, a table of simplifications (256x256 world, three roles: worker, builder, guard; 40 myrmeks, spider only, a minimal queen plan with `FIXED` and `LLM`, reduced graphics and UI, saving and roads cut), evaluation criteria and iteration order.
+- The former sections 11–13 became 12–14; a v0 line was added to the roadmap.
 
 **v0.14 (27.09.2026)**
 
-- Серверну архітектуру перенесено з обсягу v1 у наступну версію: увесь текст колишнього підрозділу 9.1 (протокол «знімок плюс дельти», розгортання, клієнти) збережено без скорочень як пункт «v1.3 — серверна симуляція і клієнти» у розділі 11.
-- v1 — одна нативна аплікація для macOS із симуляцією і рендером в одному процесі (1, 2); папка `res://app` у структурі, а `res://server`, `res://client`, `res://net` позначено як v1.3 (9); рядок «Підключення» в UI і мережеві параметри позначено як v1.3 (7, 10); збереження в v1 локальні, ключ LLM — у локальній конфігурації (6.3, 9); відкриті питання про доступ і хостинг віднесено до v1.3 (12).
+- The server architecture was moved from the v1 scope to the next version: the whole text of the former subsection 9.1 (the "snapshot plus deltas" protocol, deployment, clients) was preserved without cuts as the item "v1.3: server-side simulation and clients" in section 11.
+- v1 is a single native macOS application with simulation and rendering in one process (1, 2); the `res://app` folder in the structure, with `res://server`, `res://client`, `res://net` marked as v1.3 (9); the "Connection" row in the UI and network parameters marked as v1.3 (7, 10); saves in v1 are local, the LLM key is in local configuration (6.3, 9); open questions about access and hosting assigned to v1.3 (12).
 
 **v0.13 (27.09.2026)**
 
-- Симуляція стала серверною: headless Godot на Linux, веб-клієнт (основний) і нативний macOS-клієнт з того самого проєкту, зв'язок через WebSocket; додано рядки «Сервер» і «Клієнт» у ключові рішення (2), новий підрозділ 9.1 «Сервер і клієнт» з протоколом (знімок один раз, далі дельти області камери, глобальні зміни, мінікарта, статистика), папки `res://server`, `res://client`, `res://net` (9), рядок «Підключення» в UI (7) і мережеві параметри (10).
-- Основна модель для режиму LLM — Gemini 3.1 Pro через Google AI API, ключ лише на сервері (6.3, 10); питання про модель закрито, натомість додано питання про доступ і хостинг (12).
-- Уточнено, що збереження живуть на сервері (9) і що в v2 кожне гніздо може мати свого спостерігача (11).
+- The simulation became server-side: headless Godot on Linux, a web client (main) and a native macOS client from the same project, connected via WebSocket; added "Server" and "Client" rows to key decisions (2), a new subsection 9.1 "Server and client" with the protocol (snapshot once, then camera-area deltas, global changes, minimap, statistics), the folders `res://server`, `res://client`, `res://net` (9), a "Connection" row in the UI (7) and network parameters (10).
+- The main model for LLM mode is Gemini 3.1 Pro via the Google AI API, with the key only on the server (6.3, 10); the model question was closed, and a question about access and hosting was added instead (12).
+- Clarified that saves live on the server (9) and that in v2 each nest can have its own observer (11).
 
 **v0.12 (27.09.2026)**
 
-- Закрито питання стилю графіки: векторний стиль, намальований спрайтами в Godot (SVG, растеризовані при імпорті у високій роздільності, колір через `modulate`); розділ 8 переписано відповідно, у відкритих питаннях лишилося одне (12).
+- Closed the graphics style question: a vector style drawn with sprites in Godot (SVG rasterized on import at high resolution, colour via `modulate`); section 8 was rewritten accordingly, and one open question remains (12).
 
 **v0.11 (27.09.2026)**
 
-- За вашою пропозицією пункт «навчання матки» в дорожній карті (11) переписано на схему «LLM як учитель, нейромережа як досвід»: спільна схема директиви для обох, ансамбль малих MLP як міра впевненості плюс новизна стану, запит до LLM лише за низької впевненості, пам'ять досвіду з вагами за наслідками, ваги мережі як геном для успадкування. У таблицю режимів 6.3 додано рядок `LEARNED` (v2).
-- За вашим уточненням у 6.3 і 11 явно зафіксовано: LLM і нейромережа працюють лише на стратегічному рівні — видають план на горизонт `N_policy` тіків і не втручаються в тактику; LLM може запропонувати інший горизонт для наступного рішення.
+- Following your suggestion, the "queen learning" item in the roadmap (11) was rewritten to the "LLM as teacher, neural network as experience" scheme: a shared directive schema for both, an ensemble of small MLPs as a confidence measure plus state novelty, a request to the LLM only at low confidence, an experience memory weighted by outcomes, network weights as a genome for inheritance. A `LEARNED` (v2) row was added to the modes table in 6.3.
+- Per your clarification, 6.3 and 11 now state explicitly: the LLM and the neural network work only at the strategic level. They produce a plan for a horizon of `N_policy` ticks and do not interfere with tactics; the LLM can propose a different horizon for the next decision.
 
 **v0.10 (27.09.2026)**
 
-- За вашою пропозицією в дорожню карту (11) додано два пункти v2: «навчання матки» (політика як геном, що покращується і успадковується; пам'ять для матки-LLM; еволюція на рівні гнізд) і «поділ гнізда» (дочірня матка, таймер спорідненості `kin_timer`, після якого рідне гніздо стає ворожим, успадкування геному з мутацією).
+- Following your suggestion, two v2 items were added to the roadmap (11): "queen learning" (the policy as a genome that improves and is inherited; memory for the LLM queen; evolution at the nest level) and "nest splitting" (a daughter queen, the `kin_timer` kinship timer after which the parent nest becomes hostile, inheritance of the genome with mutation).
 
 **v0.9 (27.09.2026)**
 
-- За вашою пропозицією додано LLM для матки: новий підрозділ 6.3 «Мозок матки: алгоритми і LLM» з режимами `FIXED`, `ADAPTIVE`, `LLM`, звітом про стан, схемою директиви, асинхронним викликом, провайдерами і журналом відповідей для відтворюваності. Колишні 6.3 і 6.4 стали 6.4 і 6.5.
-- Оновлено обсяг v1 (1), ключові рішення (2: рядок «Мозок матки», уточнено детермінізм), UI (7: панель «Матка», перемикач режиму), структуру проєкту (9: `queen_policy.gd`, `nest_report.gd`, `res://llm/`), параметри (10), дорожню карту (11: матки-LLM для кількох гнізд) і відкриті питання (12).
+- Following your suggestion, an LLM was added for the queen: a new subsection 6.3 "The queen's brain: algorithms and LLM" with `FIXED`, `ADAPTIVE`, `LLM` modes, a state report, a directive schema, an asynchronous call, providers, and a response log for reproducibility. The former 6.3 and 6.4 became 6.4 and 6.5.
+- Updated the v1 scope (1), key decisions (2: "Queen's brain" row, determinism clarified), UI (7: "Queen" panel, mode toggle), project structure (9: `queen_policy.gd`, `nest_report.gd`, `res://llm/`), parameters (10), roadmap (11: LLM queens for multiple nests), and open questions (12).
 
 **v0.8 (27.09.2026)**
 
-- Закрито чотири відкриті питання за вашими відповідями: хижаки на дорогах не прискорюються (6.3, параметр `pave_predators` вилучено з 10); трупи хижаків — їжа, яку носильники несуть на склад (3.4); охоронці супроводжують групи та охороняють локації (5.2, завдання `ESCORT` і `GUARD_SITE` у 6.2); віку мірмека в v1 немає (5.1, 7, 11 — перенесено в «Далі»).
-- У 6.2 додано пункт «Стратегія оборони» з прикладами стратегій («фортеця», «конвой», «форпости», адаптивна).
-- У відкритих питаннях лишився тільки стиль графіки (12).
+- Closed four open questions based on your answers: predators on roads are not sped up (6.3, the `pave_predators` parameter removed from 10); predator carcasses are food that carriers take to storage (3.4); guards escort groups and guard locations (5.2, the `ESCORT` and `GUARD_SITE` tasks in 6.2); myrmeks have no age in v1 (5.1, 7, 11; moved to "Later").
+- Added a "Defence strategy" item to 6.2 with example strategies ("fortress", "convoy", "outposts", adaptive).
+- Only the graphics style remains among the open questions (12).
 
 **v0.7 (27.09.2026)**
 
-- За вашою ідеєю «підлога» повернулася в новій ролі: споруда `PAVEMENT` (покриття) прискорює рух мірмеків і кладеться як усередині гнізда, так і назовні як дороги (3.1, 5.2, 6.3).
-- Дороги плануються за трафіком: гніздо рахує проходи по клітинах і мостить найзавантаженіші маршрути (6.3); додано завдання `PAVE` (6.2).
-- Пошук шляху став зваженим: покриття дешевше за ґрунт (9); зменшено витрату енергії за крок по покриттю (5.4); додано колір покриття на мінікарті (7) і автоплитки (8).
-- Додано параметри `pave_speed`, `pave_traffic`, `pave_predators` і вартість (10); нове відкрите питання 5 про хижаків на дорогах (12).
+- Following your idea, the "floor" returned in a new role: the `PAVEMENT` structure (paving) speeds up myrmek movement and is laid both inside the nest and outside as roads (3.1, 5.2, 6.3).
+- Roads are planned by traffic: the nest counts passes over cells and paves the busiest routes (6.3); the `PAVE` task was added (6.2).
+- Pathfinding became weighted: paving is cheaper than ground (9); the energy cost per step on paving was reduced (5.4); a paving colour was added to the minimap (7) and to autotiling (8).
+- Added the `pave_speed`, `pave_traffic`, `pave_predators` parameters and cost (10); a new open question 5 about predators on roads (12).
 
 **v0.6 (27.09.2026)**
 
-- Закриття проходів стіною на ніч стало поведінкою за замовчуванням: `seal_at_night` увімкнено (розділи 4, 6.3, 10); питання 5 з відкритих закрито.
-- Явно додано, що будівельники можуть ламати будь-яку стіну (5.2, 6.3): відкривати проходи, розбирати старі кільця, пробивати стіну зсередини; ресурс повертається. Додано параметр `demolish_time` (10).
-- У дорожній карті v2 додано облогу: ламання чужих стін (11).
+- Closing gaps with walls for the night became the default behaviour: `seal_at_night` is on (sections 4, 6.3, 10); open question 5 was closed.
+- Explicitly added that builders can demolish any wall (5.2, 6.3): open gaps, dismantle old rings, break through a wall from inside; the resource is returned. Added the `demolish_time` parameter (10).
+- Added siege to the v2 roadmap: demolishing other nests' walls (11).
 
 **v0.5 (27.09.2026)**
 
-- За вашими зауваженнями прибрано «підлогу» і «вхід» як типи споруд: гніздо — це ділянка ґрунту, обгороджена стінами; внутрішній простір обчислюється заливкою від камери матки (розділ 6.3), а не будується і нічого не коштує.
-- Стіна непрохідна для всіх без винятку. Прохід — звичайна клітина ґрунту в кільці стін; мірмеки самі роблять проходи (будівельники ставлять і розбирають стіни) й охороняють їх (розділи 2, 6.3).
-- Хижаки більше не «ламають вхід» і не бувають «завеликими»: стовпчик «Гніздо» і стан `BREACH` вилучено з 5.5, параметр `breach_time` — з розділу 10; хижак заходить лише крізь відкритий прохід (5.5, 5.6).
-- Завдання `HOLD_ENTRANCE` замінено на `HOLD_GAP`, додано `OPEN_GAP` і `CLOSE_GAP` (6.2); додано опцію `seal_at_night` (розділи 4, 10).
-- Стартового гнізда більше немає: на старті лише матка і всі мірмеки на відкритій ділянці, гніздо треба побудувати до першої ночі (розділи 2, 3.3, 10); у 6.2 додано стартовий план матки на першу добу з оцінкою, чи встигають стіни; питання про розмір стартового гнізда закрито.
-- Уточнено нічну політику (4), журнал подій (7), потоки ресурсів (6.4) і відкриті питання (12).
+- Per your feedback, "floor" and "entrance" were removed as structure types: the nest is a patch of ground enclosed by walls; the interior is computed by a flood fill from the queen chamber (section 6.3), not built, and costs nothing.
+- Walls are impassable to everyone without exception. A gap is an ordinary ground cell in the wall ring; the myrmeks make gaps themselves (builders place and dismantle walls) and guard them (sections 2, 6.3).
+- Predators no longer "break the entrance" and are never "too big": the "Nest" column and the `BREACH` state were removed from 5.5, and the `breach_time` parameter from section 10; a predator enters only through an open gap (5.5, 5.6).
+- The `HOLD_ENTRANCE` task was replaced with `HOLD_GAP`, and `OPEN_GAP` and `CLOSE_GAP` were added (6.2); the `seal_at_night` option was added (sections 4, 10).
+- There is no longer a starting nest: at the start there are only the queen and all myrmeks on open ground, and the nest must be built before the first night (sections 2, 3.3, 10); a starting plan for the queen's first day was added to 6.2 with an estimate of whether the walls can be built in time; the question about the size of the starting nest was closed.
+- Clarified the night policy (4), the event log (7), resource flows (6.4) and open questions (12).
 
 **v0.4 (27.09.2026)**
 
-- За коментарем до розділу 2: у гнізді, як і зовні, не більше одного мірмека на клітину; прибрано «до 8 на клітину». Відповідно переписано план розширення в 6.3 (підлоги має вистачати на все населення), уточнено стартове гніздо в 3.3 і нічну політику в розділі 4 (у гніздо повертаються, скільки вміщає підлога).
-- «Колонія» замінено на «гніздо» по всьому тексту: гніздо — це і спільнота, і база. У коді `colony_id` → `nest_id`, `colony.gd` → `nest.gd`; розділ 6.3 перейменовано на «Гніздо як споруда».
-- Питання про назву колонії закрито; замість нього додано питання 6 про розмір стартового гнізда.
+- Per a comment on section 2: inside the nest, as outside, there is at most one myrmek per cell; "up to 8 per cell" was removed. The expansion plan in 6.3 was rewritten accordingly (there must be enough floor for the whole population), the starting nest in 3.3 was clarified, as was the night policy in section 4 (myrmeks return to the nest as far as the floor allows).
+- "Colony" was replaced with "nest" throughout the text: the nest is both the community and the base. In code, `colony_id` → `nest_id`, `colony.gd` → `nest.gd`; section 6.3 was renamed "The nest as a structure".
+- The question about the colony's name was closed; question 6 about the size of the starting nest was added instead.
 
 **v0.3 (27.09.2026)**
 
-- За коментарем до v0.2: збереження та завантаження перенесено в обсяг v1 (розділ 1).
-- Додано опис збереження в розділі 9 (що зберігається, формат, поведінка після завантаження) і файл `save.gd` у структурі проєкту.
-- Додано рядок «Збереження» в UI (розділ 7) та параметри автозбереження і кількості слотів (розділ 10).
-- У дорожній карті v1.2 тепер лише повтор забігу за журналом втручань (розділ 11).
-- З відкритих питань вилучено пункт про збереження, решту перенумеровано (розділ 12).
-- За коментарем до розділу 2: розмір світу задається при генерації і може бути меншим за 2048; уточнено розділи 2, 3.2, 7 (мінікарта), 9 (пам'ять) і 10.
-- «Мурашник» в усіх формах замінено на «гніздо» (у коді — `Nest`) по всьому тексту; узгоджено прикметники («компактне гніздо», «стартове гніздо»). Термін додано в шапку.
+- Per a comment on v0.2: save and load moved into the v1 scope (section 1).
+- Added a description of saving to section 9 (what is saved, format, behaviour after loading) and the `save.gd` file to the project structure.
+- Added a "Saving" row to the UI (section 7) and autosave and slot count parameters (section 10).
+- In the roadmap, v1.2 now contains only replaying a run from the intervention log (section 11).
+- The item about saving was removed from the open questions, and the rest were renumbered (section 12).
+- Per a comment on section 2: the world size is set at generation and can be smaller than 2048; clarified sections 2, 3.2, 7 (minimap), 9 (memory) and 10.
+- "Anthill" in all forms was replaced with "nest" (in code: `Nest`) throughout the text; adjectives were aligned ("compact nest", "starting nest"). The term was added to the header.
 
 **v0.2 (27.09.2026)**
 
-- Назву проєкту змінено з Formica на Myrmex; у шапці додано походження назви і термін для істоти.
-- Слово «мураха» в усіх формах замінено на «мірмек» по всьому тексту (розділи 1–12), з узгодженням роду в сусідніх словах («робочий мірмек гине», «їсть сам», «кожен виконує» тощо).
-- У розділі 9 файл `ant.gd` перейменовано на `myrmek.gd`.
-- До відкритих питань додано пункт 7 про назву колонії та гнізда.
-- Ідентифікатори в коді (`FEED_ANT`, `NEST_*`) поки не змінювались.
+- The project name was changed from Formica to Myrmex; the origin of the name and the term for the creature were added to the header.
+- The word "ant" (мураха) in all forms was replaced with "myrmek" throughout the text (sections 1–12), with grammatical agreement in neighbouring words.
+- In section 9, the file `ant.gd` was renamed to `myrmek.gd`.
+- Item 7 about the name of the colony and nest was added to the open questions.
+- Code identifiers (`FEED_ANT`, `NEST_*`) have not been changed yet.
 
-**v0.1 (27.09.2026)** — перша версія концепту.
+**v0.1 (27.09.2026)**: first version of the concept.
