@@ -4,3 +4,14 @@
 .godot/
 *.import
 export_presets.cfg
+
+# codegen tracker & python tooling
+codegen/runs/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+.env
+.ship-solution-progress.md

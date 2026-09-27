@@ -14,6 +14,17 @@ These three files are the source of truth. When a decision changes, update every
 
 No build, lint, or test commands exist yet. The target stack is Godot 4.x (4.3+) / GDScript with headless tests (gdUnit4 or GUT); record the real commands here (run, headless run, test suite, single test) as soon as the Godot project exists.
 
+## SDLC pipeline (skills)
+
+The code is built from the specs by the SDLC skills in `.claude/skills/`, with every run tracked by `codegen/` — overview in [CODEGEN.md](CODEGEN.md), tracker detail in [codegen/README.md](codegen/README.md):
+
+- **GitHub-driven:** `/ship-phase <selectors>` — per phase `vA.B`: reconcile against the real code → `generate-issues` → `upload-issues` → `execute-issues` → `review-and-fix-issues` → `release-version vA.B.0`, with a HARDEN sweep at each version (`vA`) boundary by default (`--no-harden` to skip). Needs an authenticated `gh`.
+- **File-driven, offline:** `/ship-solution [selectors]` — executes from existing `specification/implementation/vA.B-issues.md` files (`reconcile-issues` → `execute-issues-file` → `review-and-fix-issues` → `release-version`); it cannot generate a missing issues file.
+- `specification/implementation/` is the skills' working directory (issues files, GitHub/execution reports, code reviews). `/reset-generated` clears a run's output using the run's own event log — dry-run by default; for Myrmex the generated app is the product, so resets are deliberate experiments only.
+- Dashboard: `cd codegen && ../.venv/bin/python -m uvicorn dashboard.server:app --port 8420` (deps: `.venv/bin/pip install -r codegen/requirements.txt`); the hooks in `.claude/settings.json` emit events automatically.
+
+Rules that hold across all skills: issue ids are **`MYRMEX-###`**, globally sequential (`max(GitHub, local issues files) + 1`), never restarted; one issue = one commit, in dependency order; tests ship with the feature and the LLM provider is `MOCK` in tests (no paid calls); a seam change updates ARCHITECTURE.md + its contract test in the same commit; releases are `vA.B.C` tags cut per phase by `release-version` — never bump a version without explicit confirmation; the canonical test gate is `scripts/test.sh` (headless), created in v0.1.
+
 ## Conventions
 
 - Terminology is fixed: the creature is a **myrmek** (never "ant" in prose), the base/community is the **nest** (never "colony" or "anthill"). Code identifiers use `nest_id`, `myrmek.gd`, `FEED_MYRMEK`.

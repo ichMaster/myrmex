@@ -1,6 +1,6 @@
 # Architecture — Myrmex
 
-Document version 1.0 — 27 September 2026.
+Document version 1.1 — 27 September 2026.
 
 ## Overview
 
@@ -206,8 +206,23 @@ Every roadmap phase ships with the tests that encode its DoD; all sim tests run 
 - **Balance smoke**: headless seed batches — without the LLM the nest survives the first night in ≥50% of seeds.
 - **LLM**: `MOCK` provider only in tests — no paid calls; the full report → program → validation → apply loop against canned programs, including deliberately broken ones.
 
+## Open questions
+
+Decisions still open, each with the current recommendation. When one is settled, fold the answer into the sections above and log it in the history; new questions are added here as they arise.
+
+1. **Strategy language in the prototype (v0.5)** — a throwaway GDScript runner first (zero dependencies), or Lua via godot-luaAPI from the start, which removes the weak static-whitelist safety, the double implementation, and the parity suite at the cost of one prototype dependency? *Recommendation: Lua from v0.5; `StrategyRunner` stays either way.*
+2. **Test framework** — gdUnit4 or GUT. *Recommendation: gdUnit4 (headless reports, parameterized tests, CI integration); pinned the moment v0.1 creates `scripts/test.sh`.*
+3. **Cross-platform float determinism** — basic IEEE arithmetic replays identically across platforms, but libm functions (sin/pow) do not. Do we require bit-identical runs between the Linux server (v4) and macOS clients? *Recommendation: yes — keep energy and every accumulated quantity in fixed-point integers (hundredths) and ban transcendental functions inside `res://sim/`; determinism then crosses platforms for free.*
+4. **One RNG stream or named streams** — with a single stream, an observer intervention shifts every later draw in the simulation. *Recommendation: named streams (worldgen / spawner / combat / strategy) derived from the master seed; replays stay robust and effects stay local.*
+5. **The async boundary** — `HTTPRequest` is a `Node`, and the sim is pure data. *Recommendation: pin as a contract that `res://sim/` never touches the network or the scene tree — the LLM client lives in the app/server layer behind the provider seam, and a new program version enters the sim only at a tick boundary.*
+6. **Serialization without objects** — a save read with `bytes_to_var_with_objects` is an attack vector (a foreign save becomes code execution). *Recommendation: plain types only in the save format (numbers, strings, arrays, dictionaries), never full objects; critical from v4 when saves live on the server.*
+7. **Arena execution model** — parallel headless processes or sequential in one process, and where results live. *Recommendation: sequential first (simplest determinism), parallel processes later; one results table per run under `user://arena/`.*
+8. **Local key configuration (v1)** — "outside the repo" is decided; the exact location and format are not. *Recommendation: a config file under the platform config dir (`OS.get_config_dir()`/myrmex), with environment variables taking precedence.*
+
 ---
 
 ## History of changes
+
+**v1.1 (27.09.2026)** — added the Open questions section: eight open decisions with recommendations (prototype strategy language, test framework, cross-platform float determinism, RNG streams, the async boundary, object-free serialization, the arena execution model, local key configuration).
 
 **v1.0 (27.09.2026)** — initial version, derived from the retired concept v0.20 ([history/](history/)).
