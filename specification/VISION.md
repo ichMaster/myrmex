@@ -1,6 +1,6 @@
 # Vision — Myrmex
 
-Document version 1.4 — 27 September 2026.
+Document version 1.5 — 27 September 2026.
 
 ## In one sentence
 
@@ -54,7 +54,7 @@ end
 
 It sees only what the nest knows (`s` is the `StateView`), it returns only a policy (`p`), and it can ask for its own revision (`request_revision`) — which is how a program written by an LLM asks its author to look at the results and rewrite it. Everything between planning cycles — every task, every myrmek — is handled by the algorithmic tactical level, for free.
 
-A program is **optional, and it has to earn its place.** With none, the queen plays on her own built-in algorithm (`BUILTIN`), directing every myrmek herself — that mode alone is expected to survive the first night, and it is the bar every program must clear. Because each strategy declares its own `goals`, the engine can judge it: at every dawn it scores declared against actual and, when a strategy fails — or breaches a floor it was never allowed to declare away — the queen demotes to `BUILTIN` at once, blacklists that version, and tries the next genuinely *different* idea from the library. Near-identical programs count as one idea and are skipped, and after a couple of real attempts the ladder stops guessing and asks the model — handing it the failed programs together with their numbers, so the next attempt starts from what did not work rather than from nothing. The nest never stops playing while that happens.
+A program is **optional, and it has to earn its place.** With none, the queen plays on her own built-in algorithm (`BUILTIN`), directing every myrmek herself — that mode alone is expected to survive the first night, and it is the bar every program must clear. Because each strategy declares its own `goals`, the engine can judge it: at every dawn it scores declared against actual and, when a strategy fails — or breaches a floor it was never allowed to declare away — the queen demotes to `BUILTIN` at once, blacklists that version, and tries the next genuinely *different* idea from the library — the one whose declared goals fit what the nest needs right now, because the engine classifies its own situation (founding, siege, famine, crowded, stable) rather than trusting a static ranking. Near-identical programs count as one idea and are skipped, and after a couple of real attempts the ladder stops guessing and asks the model — handing it the failed programs together with their numbers, so the next attempt starts from what did not work rather than from nothing. The nest never stops playing while that happens.
 
 ## Designed tensions
 
@@ -107,6 +107,7 @@ The logic is cellular; the picture is free. Vector art — simple shapes, soft g
 - **StateView** — the read-only window a strategy sees: copied scalars plus engine-side helper functions; never the `World` object.
 - **StrategyRunner** — the seam hiding the strategy execution environment (sandboxed Lua 5.4 via godot-luaAPI) from the rest of the code.
 - **`queen_brain`** — who decides the policy: `BUILTIN` (no program — the queen's own algorithm directs every myrmek), `PROGRAM` (a hand-written Lua program), `LLM` (the model writes and revises one), `LEARNED` (v6).
+- **Situation** — what the nest needs right now, classified by the engine from its own numbers: `FOUNDING`, `SIEGE`, `FAMINE`, `CROWDED`, `STABLE`. It decides which goals matter, and therefore which strategy fits; the observer can pin one by hand.
 - **Goals** — what a strategy declares it will achieve (deaths per day, food store, capacity ratio, surviving the first night); clamped up to engine floors, so a strategy cannot lower its own bar.
 - **Scorecard** — the dawn comparison of declared goals against actuals, with a healthy / warning / failing verdict; journaled, and read alike by the queen panel, the model and the arena.
 - **Escalation ladder** — what happens on a failing verdict: demote to `BUILTIN`, blacklist the version, try the next genuinely different library strategy within a small budget, then ask the LLM with a dossier of what failed.
@@ -119,6 +120,8 @@ The logic is cellular; the picture is free. Vector art — simple shapes, soft g
 ---
 
 ## History of changes
+
+**v1.5 (27.09.2026)** — added the engine-classified **situation** that decides which goals matter now, and therefore which strategy fits (The strategy is a program, Glossary).
 
 **v1.4 (27.09.2026)** — a program is optional and must earn its place: named the program-free `BUILTIN` mode as the bar every strategy has to clear, added declared `goals` to the worked example, and described the dawn scorecard, the escalation ladder with its budget and fingerprint-based similarity guard, and the failure dossier sent to the model (The strategy is a program, Glossary).
 

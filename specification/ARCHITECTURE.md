@@ -1,6 +1,6 @@
 # Architecture — Myrmex
 
-Document version 1.10 — 27 September 2026.
+Document version 1.11 — 27 September 2026.
 
 ## Overview
 
@@ -282,7 +282,10 @@ flowchart TB
     agents -.-> score["strategy_eval — dawn scorecard<br/>declared goals vs actuals + engine floors"]
     goalsd[("goals declared by the program")] -.-> score
     score -->|"healthy · warning"| planf
-    score -->|"failing"| ladder["escalation ladder<br/>demote to BUILTIN · blacklist ·<br/>next eligible candidate · then the LLM"]
+    score -->|"failing"| ladder["escalation ladder<br/>demote to BUILTIN · blacklist ·<br/>best-fit eligible candidate · then the LLM"]
+    world -.-> sit["situation: FOUNDING · SIEGE · FAMINE ·<br/>CROWDED · STABLE (hysteresis)"]
+    sit -->|"the demand: which goals matter now"| ladder
+    sit -.-> sv
     ladder -.-> planf
     planf -.->|"request_revision"| ladder
 ```
@@ -306,6 +309,20 @@ The strategic and tactical levels run on completely different clocks: `plan()` i
 
 **The shipped strategies.** A handful of hand-written Lua programs live in `res://strategies/` from v0.5 — they are the `PROGRAM` mode's content, the arena's opponents, and what the `MOCK` provider serves in tests. Each is expressible in the six prototype policy fields, so each is a few dozen readable lines with a clearly different idea: `baseline.lua` (the default balanced policy, the `PROGRAM` default), `fortress.lua` (guards massed at the gaps, always seal, a tight ring, short trips), `forager.lua` (food weighted heavily, fewer guards, a bigger harvest share), `growth.lua` (a wider ring early, build priority over food once the store is safe). The first thing the arena answers is whether any of them — or anything Gemini writes — actually beats `BUILTIN`.
 
+**Who decides what the nest needs *now*.** A strategy declaring its own goals only answers half the question; the other half is which goals matter at this moment, and that is **the engine's call, not the strategy's and not the model's**. Every cycle `strategy_eval.gd` classifies the nest's **situation** from the same numbers the task board already has — a pure function of state, so it is deterministic and testable:
+
+| Situation | Recognized by | What it demands |
+|---|---|---|
+| `FOUNDING` | No closed ring yet (day 1, or after a ring is lost) | Close a ring with a gap and stock the food store before dusk — nothing else matters |
+| `SIEGE` | Predators inside the known radius, or deaths rising | Guards at the gaps, sealing, short trips; losses down even at the cost of income |
+| `FAMINE` | Store below the reserve, or queen energy falling | Food income above everything; harvesting and building yield |
+| `CROWDED` | Capacity below population (beyond `capacity_grace`) | A wider ring and storages; capacity ahead of population |
+| `STABLE` | None of the above | Expansion, roads, exploration — the only situation where growth is the point |
+
+This is what makes picking a strategy possible: a candidate's **declared goals are matched against the current demand**, and the ladder promotes the best *fit* among eligible programs, breaking ties by arena rank. `growth.lua` is an excellent program and the wrong one during a `FAMINE`; `fortress.lua` is right for a `SIEGE` and will slowly strangle a `STABLE` nest. Situations carry **hysteresis** (`situation_hysteresis`, default 1 day): a situation must hold before it takes effect, so the nest does not swap strategies every dawn on noise. The current situation and its demand ride in the `StateView` (`s.situation`), so a program can also branch on it itself, and in the LLM dossier, so the model writes for the situation the nest is actually in.
+
+The observer may **pin an objective** from the queen panel — "grow capacity", "survive the night" — which overrides the classifier until unpinned. That is a queen-level knob like choosing a strategy, not an order to a myrmek, and it enters as a journaled command at a tick boundary, so replays are exact.
+
 **Every strategy declares its goals.** A program exports a `goals` table beside `plan` — the outcomes it claims it will deliver, in the same spirit as the policy it returns: `survive_first_night`, `max_deaths_per_day`, `min_food_store`, `min_capacity_ratio`, `ring_closed_by`. Fields it omits take the engine's defaults, and the whole table is bounds-checked exactly like a policy. This is what makes a strategy judgeable rather than merely runnable: it states what "working" means for *it*, so `fortress.lua` can promise zero deaths at the cost of slow growth while `growth.lua` promises capacity ahead of population and accepts losses.
 
 **Declared goals cannot be gamed.** The engine keeps its own **floors** and a breach is a failure whatever `goals` says: the population must not halve in a day, the queen must not starve, the food store must not sit empty for a whole day, capacity must not stay below population for more than `capacity_grace` days. A declaration laxer than a floor is clamped to it and the clamp is logged — a strategy cannot buy survival by lowering its own bar.
@@ -323,14 +340,16 @@ stateDiagram-v2
     ACTIVE --> ACTIVE: healthy or warning
     ACTIVE --> FAILED: floor breached, or 2 warning days
     FAILED --> BUILTIN: demote at once, blacklist the version
-    BUILTIN --> PROBATION: next eligible candidate, budget permitting
+    BUILTIN --> PROBATION: best-fit eligible candidate, budget permitting
     BUILTIN --> ASKING: budget spent or nothing eligible left
     ASKING --> PROBATION: answer passes validation and is no rehash
     ASKING --> BUILTIN: unavailable, rejected, or a rehash
     note right of BUILTIN
         eligible = untried in this crisis, not blacklisted,
         and no fingerprint sibling of a version that already
-        failed. Budget: library_attempts (2) per crisis.
+        failed. Among those, best fit = declared goals against
+        the current situation's demand, ties by arena rank.
+        Budget: library_attempts (2) per crisis.
         The nest plays on the queen's own algorithm
         throughout; ticks never wait for an answer.
     end note
@@ -342,7 +361,7 @@ stateDiagram-v2
     end note
 ```
 
-In order: **demote to `BUILTIN` immediately** (the queen's own algorithm is never worse than a broken strategy and is always available), **blacklist** the failed version with its scorecard, **promote the next eligible candidate** from the library, and once the budget is spent or nothing is eligible, **ask the LLM**. If the model is unavailable or every answer fails validation, the nest stays on `BUILTIN` and the queen panel says why. There is no path back up except a validated program serving its probation.
+In order: **demote to `BUILTIN` immediately** (the queen's own algorithm is never worse than a broken strategy and is always available), **blacklist** the failed version with its scorecard, **promote the best-fit eligible candidate** from the library — the one whose declared goals answer the current situation's demand, and once the budget is spent or nothing is eligible, **ask the LLM**. If the model is unavailable or every answer fails validation, the nest stays on `BUILTIN` and the queen panel says why. There is no path back up except a validated program serving its probation.
 
 **Two library strategies are not a carousel.** Cycling through near-identical programs wastes days the nest may not have, so eligibility is deliberately narrow and budgeted:
 
@@ -392,7 +411,8 @@ The stable seams. Changing a contract must change its contract test (§Testing).
 - **Agent record** and **cell layers** as defined in §Agents / §World model.
 - **Save format**: versioned JSON header + compressed `var_to_bytes` body (§Saves).
 - **Strategy version record**: `{id, source, author_mode, tick, change_note, metrics}` — the journal replays runs without re-calling the model.
-- **Goals** (declared by a strategy): `{survive_first_night, max_deaths_per_day, min_food_store, min_capacity_ratio, ring_closed_by}` — every field optional, bounds-checked, clamped up to the engine's floors.
+- **Situation** (derived by the engine, pure function of state): `{situation: FOUNDING|SIEGE|FAMINE|CROWDED|STABLE, since_tick, demand: {goal: weight}, pinned_by_observer}` — carried in `StateView` and the LLM dossier; hysteresis before a change takes effect.
+- **Goals** (declared by a strategy): `{survive_first_night, max_deaths_per_day, min_food_store, min_capacity_ratio, ring_closed_by}` — every field optional, bounds-checked, clamped up to the engine's floors. Matched against the situation's `demand` to score fit when the ladder picks a candidate.
 - **Scorecard**: `{tick, day, strategy_id, goals: [{goal, expected, actual, met}], verdict: healthy|warning|failing, floor_breached}` — journaled per day; read by the queen panel, the LLM revision prompt and the arena's ranking, which is why all three agree on what "good" means.
 - **Fingerprint**: the policy vector a program produces over a fixed set of recorded states, plus its declared `goals` — the similarity key that makes siblings skippable and a rehashed LLM answer rejectable.
 - **Attempt ledger** (per run, journaled): `{crisis_id, strategy_id, fingerprint, outcome: promoted|failed|skipped_similar|rejected_rehash, tick, blacklist_until_day}` — the record the ladder consults, so "already tried" survives a save/load and replays identically.
@@ -434,12 +454,12 @@ Since the sim is pure data, saving is serialization: format version, seed and pa
 
 - **Event log**: deaths, patch depletion, predator killed / predator inside, gaps opened/closed, new ring; births from v2.
 - **Statistics**: population by role, deaths by cause, storages, % of map known, predator counts; charts over recent days.
-- **Queen panel**: the current mode and program with fired-branch highlighting from the last cycle, the active policy, the latest scorecard as declared-goal versus actual with its verdict, the promotion/demotion history (including why a version was blacklisted and what the ladder tried next), and in `LLM` mode the version history with change notes and response times, plus "revise now" and "save to library".
+- **Queen panel**: the current **situation** with what it demands and how long it has held (plus the observer's pin, when set), the current mode and program with fired-branch highlighting from the last cycle, the active policy, the latest scorecard as declared-goal versus actual with its verdict, the promotion/demotion history (including why a version was blacklisted and what the ladder tried next), and in `LLM` mode the version history with change notes and response times, plus "revise now" and "save to library".
 - **Autosave marker**: "saved: day N, time" — the save system is otherwise invisible.
 
 ## Configuration
 
-Defaults are data (`res://data/*.tres` — `roles.tres`, `predators.tres`, `sim_params.tres`), edited live from the parameters panel. Key defaults: world 2048x2048; chunk 64; water/rock 12%/10%; 40 patches (10–60 units); 60 starting food items; active radius 200; 10 ticks/s; day 600/60/400/60; `N_plan` 10; roles 15/20/15/30/20; food reserve 20; `seal_at_night` on; `T_food` 200 / `p_food` 0.3; `T_res` 3000; predators 3/2/2 on a 60–150 ring; `queen_brain` `PROGRAM` with `baseline.lua` (`BUILTIN` before v0.5 exists, and as the fallback); `N_revision` 1120; LLM min interval 60 s; provider Gemini 3.1 Pro (`MOCK` in tests); `build_time` 10; `demolish_time` 5; `pave_speed` 2; `pave_traffic` 30/day; `autosave_ticks` 1120. Scorecard defaults and floors: `max_deaths_per_day` 5% of population, `min_food_store` = the food reserve, `min_capacity_ratio` 1.0, `probation_days` 1, `capacity_grace` 3 days, `warning_days_to_fail` 2, `library_attempts` 2 per crisis, `similarity_eps` 0.1 (normalized policy distance), `blacklist_days` = the whole run in v0 and 5 sim-days from v1.5; floors — population halving in a day, a starved queen, a food store empty for a whole day.
+Defaults are data (`res://data/*.tres` — `roles.tres`, `predators.tres`, `sim_params.tres`), edited live from the parameters panel. Key defaults: world 2048x2048; chunk 64; water/rock 12%/10%; 40 patches (10–60 units); 60 starting food items; active radius 200; 10 ticks/s; day 600/60/400/60; `N_plan` 10; roles 15/20/15/30/20; food reserve 20; `seal_at_night` on; `T_food` 200 / `p_food` 0.3; `T_res` 3000; predators 3/2/2 on a 60–150 ring; `queen_brain` `PROGRAM` with `baseline.lua` (`BUILTIN` before v0.5 exists, and as the fallback); `N_revision` 1120; LLM min interval 60 s; provider Gemini 3.1 Pro (`MOCK` in tests); `build_time` 10; `demolish_time` 5; `pave_speed` 2; `pave_traffic` 30/day; `autosave_ticks` 1120. Scorecard defaults and floors: `max_deaths_per_day` 5% of population, `min_food_store` = the food reserve, `min_capacity_ratio` 1.0, `probation_days` 1, `capacity_grace` 3 days, `warning_days_to_fail` 2, `library_attempts` 2 per crisis, `situation_hysteresis` 1 day, `similarity_eps` 0.1 (normalized policy distance), `blacklist_days` = the whole run in v0 and 5 sim-days from v1.5; floors — population halving in a day, a starved queen, a food store empty for a whole day.
 
 ## Tech stack
 
@@ -480,7 +500,8 @@ res://sim/           pure simulation — no Node, no scene tree, no network
   strategy_lua.gd    the Lua 5.4 runner: sandbox, instruction limit, table conversion
   policy_schema.gd   policy fields, types, bounds — the validation source of truth
   queen_policy.gd    BUILTIN / PROGRAM / LLM modes, version validation, dry run, library
-  strategy_eval.gd   declared goals vs actuals, the dawn scorecard, the escalation ladder
+  strategy_eval.gd   situation classifier, declared goals vs actuals, the dawn
+                     scorecard, candidate fit scoring, the escalation ladder
   nest_report.gd     the report for the LLM (state, metrics, fired branches)
   pathfinding.gd     distance field + local A*
   combat.gd          adjacency damage, deaths, carcasses, cargo drops
@@ -530,6 +551,8 @@ Decisions still open, each with the current recommendation. When one is settled,
 ---
 
 ## History of changes
+
+**v1.11 (27.09.2026)** — answered who sets the *current* goals, which declared goals alone could not: the engine classifies the nest's **situation** (`FOUNDING`, `SIEGE`, `FAMINE`, `CROWDED`, `STABLE`) as a pure, hysteresis-damped function of state, and that situation's **demand** is what a candidate's declared goals are matched against — so the ladder promotes the best *fit* rather than the next name in a list, with arena rank breaking ties. The situation rides in `StateView` (a program may branch on it) and in the LLM dossier (the model writes for the real situation); the observer may pin an objective from the queen panel as a journaled tick-boundary command. Added the `Situation` contract, `situation_hysteresis`, the classifier in `strategy_eval.gd`, the situation in the queen panel, and updated the two-level brain and ladder diagrams to show demand feeding candidate choice.
 
 **v1.10 (27.09.2026)** — the escalation ladder stopped being a carousel: a per-crisis budget of `library_attempts` (2) candidates, a policy **fingerprint** so near-identical programs count as one idea and siblings of a failure are skipped without consuming budget, blacklisting with earned rehabilitation measured in **simulation days** (never wall-clock, to keep replay exact), and an **attempt ledger** contract that survives save/load. The LLM is now sent a **dossier of the failures** — every failed source with its scorecards, the floors breached, the blacklist and its reasons, and `BUILTIN`'s numbers over the same days — with the no-rehash rule enforced by fingerprint at validation rather than merely requested. The ladder diagram was added and the two existing strategy diagrams brought up to date with it — the two-level brain now shows the scorecard closing the loop and routing a failing verdict into the ladder, and the LLM sequence now carries the dossier, the fingerprint rehash check and promotion on probation. The `Fingerprint` and `Attempt ledger` contracts and the configuration defaults were updated together.
 
