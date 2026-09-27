@@ -1,6 +1,6 @@
 # Architecture — Myrmex
 
-Document version 1.20 — 27 September 2026.
+Document version 1.21 — 27 September 2026.
 
 ## Overview
 
@@ -547,6 +547,8 @@ Deliberately **not** in the stack: no physics engine (the world is cellular and 
 
 ```
 res://sim/           pure simulation — no Node, no scene tree, no network
+  sim.gd             the simulation aggregate: owns world/clock/rng/spawner, steps the
+                     seven tick phases, exposes the state hash
   world.gd           layer arrays, chunks, cell access
   worldgen.gd        deterministic generation from a seed
   clock.gd           ticks, speed, day phases
@@ -614,6 +616,8 @@ Decisions still open, each with the current recommendation. When one is settled,
 ---
 
 ## History of changes
+
+**v1.21 (27.09.2026)** — Repository layout: added the `res://sim/sim.gd` line (the simulation aggregate landed in MYRMEX-004); docs-only, no seam change.
 
 **v1.20 (27.09.2026)** — adopted handoff v2.8: the Art row becomes the hybrid pipeline (generated 8-heading PNG sheets for creatures and nest structures, regenerable from prompts, as the working art; procedural vector for the rest), the Rendering row maps sheets to MultiMesh rows and `SpriteFrames` (frame = heading), and the View gains the render-only combat FX layer with the explicit no-corpse-entity rule.
 
