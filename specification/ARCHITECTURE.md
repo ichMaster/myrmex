@@ -1,6 +1,6 @@
 # Architecture — Myrmex
 
-Document version 1.7 — 27 September 2026.
+Document version 1.8 — 27 September 2026.
 
 ## Overview
 
@@ -264,6 +264,8 @@ flowchart LR
 
 **Tactical level — every `N_plan` ticks:** gather state (food, piles, patches, predators on the known map, hungry myrmeks, build queue, storage levels, frontier) → build the task board (`EXPLORE`, `FETCH_FOOD`, `FETCH_PILE`, `HARVEST`, `BUILD`, `FEED_MYRMEK`, `DELIVER_RES`, `PATROL`, `INTERCEPT`, `HOLD_GAP`, `OPEN_GAP`, `CLOSE_GAP`, `PAVE`, `ESCORT`, `GUARD_SITE`) → rank by policy (safety → feeding → food income → construction → resources → exploration) → assign greedily by the distance field. **Known but unreachable cells (no finite distance) are never assigned as targets.** A task whose target vanishes is cancelled. Guard distribution across patrol/gaps/escort/sites is the defence-strategy space ("fortress", "convoy", "outposts", adaptive). While no nest exists, a hardcoded first-day plan runs: harvesters to the nearest patch, builders raise a radius-5 ring (~40 walls) with one gap and a food storage, guards ring the queen, scouts open the surroundings.
 
+**The tactical level is complete on its own.** With no strategy program at all, the queen runs on her built-in algorithm: the default policy plus the hardcoded plans (the first-day plan, night policy, ring expansion), directing every myrmek herself. This is a real playing mode, not a stub — it is what runs through phases v0.1–v0.4, before Lua exists in the project, and its bar is exactly the prototype's balance criterion: **survive the first night on at least half of all seeds, with no program and no model**. A strategy program never replaces this level; it only *tunes the policy* the level already obeys.
+
 **Strategic level — the strategy program:** a module with `plan(s) -> policy` and a persistent `memory` table, executed by the queen on every planning cycle (microseconds). It assigns no tasks, moves no myrmeks, and sees nothing beyond the nest's knowledge.
 
 ```mermaid
@@ -288,12 +290,16 @@ The strategic and tactical levels run on completely different clocks: `plan()` i
 
 **Who writes the program — `queen_brain`:**
 
-| Mode | Author | Changes |
+| Mode | Who decides the policy | Changes |
 |---|---|---|
-| `PROGRAM` | A human, or a saved library program | Never by itself; the baseline |
-| `LLM` | The model writes it at start, revises by results | On events (first night, predator inside, mass deaths, empty storage), on `request_revision`, at most once per `N_revision` |
-| `LEARNED` (v6) | A small NN tunes parameters / picks from the library; asks the LLM at low confidence | Every planning cycle |
+| `BUILTIN` | **No program at all** — the queen's own algorithm: default policy + the hardcoded plans, assigning every myrmek directly | Never; this is the zero point every program is measured against |
+| `PROGRAM` | A hand-written Lua program from `res://strategies/` or the user's library | Never by itself; swapped or edited by the person, reloaded on the fly |
+| `LLM` | The model writes a program at start and revises it by results | On events (first night, predator inside, mass deaths, empty storage), on `request_revision`, at most once per `N_revision` |
+| `LEARNED` (v6) | A small NN tunes a program's parameters / picks one from the library; asks the LLM at low confidence | Every planning cycle |
 
+`BUILTIN` is also the **fallback**, reached without ceremony: no API key, every candidate version rejected, a strategy file that will not load — the nest keeps playing on its own algorithm and says so in the queen panel. Nothing in the simulation depends on a program existing.
+
+**The shipped strategies.** A handful of hand-written Lua programs live in `res://strategies/` from v0.5 — they are the `PROGRAM` mode's content, the arena's opponents, and what the `MOCK` provider serves in tests. Each is expressible in the six prototype policy fields, so each is a few dozen readable lines with a clearly different idea: `baseline.lua` (the default balanced policy, the `PROGRAM` default), `fortress.lua` (guards massed at the gaps, always seal, a tight ring, short trips), `forager.lua` (food weighted heavily, fewer guards, a bigger harvest share), `growth.lua` (a wider ring early, build priority over food once the store is safe). The first thing the arena answers is whether any of them — or anything Gemini writes — actually beats `BUILTIN`.
 **The LLM loop:** the model receives the language description, the `StateView`/policy API, the goal, and the situation → returns a program; on revision it also gets the current program, metrics since the last revision, and a log of which branches fired → returns a new version plus a change note. Every version passes validation — compile, static check or sandbox, policy bounds, a dry run on recorded states from the last day — or is discarded while the previous version keeps running. Calls are asynchronous (`HTTPRequest`); the simulation never waits; a minimum real-time interval prevents request storms at 16x. Every accepted version is journaled with its tick, so saves and replays reproduce LLM runs without new calls. **The model never controls an individual myrmek.**
 
 ```mermaid
@@ -377,7 +383,7 @@ Since the sim is pure data, saving is serialization: format version, seed and pa
 
 ## Configuration
 
-Defaults are data (`res://data/*.tres` — `roles.tres`, `predators.tres`, `sim_params.tres`), edited live from the parameters panel. Key defaults: world 2048x2048; chunk 64; water/rock 12%/10%; 40 patches (10–60 units); 60 starting food items; active radius 200; 10 ticks/s; day 600/60/400/60; `N_plan` 10; roles 15/20/15/30/20; food reserve 20; `seal_at_night` on; `T_food` 200 / `p_food` 0.3; `T_res` 3000; predators 3/2/2 on a 60–150 ring; `queen_brain` `PROGRAM`; `N_revision` 1120; LLM min interval 60 s; provider Gemini 3.1 Pro (`MOCK` in tests); `build_time` 10; `demolish_time` 5; `pave_speed` 2; `pave_traffic` 30/day; `autosave_ticks` 1120.
+Defaults are data (`res://data/*.tres` — `roles.tres`, `predators.tres`, `sim_params.tres`), edited live from the parameters panel. Key defaults: world 2048x2048; chunk 64; water/rock 12%/10%; 40 patches (10–60 units); 60 starting food items; active radius 200; 10 ticks/s; day 600/60/400/60; `N_plan` 10; roles 15/20/15/30/20; food reserve 20; `seal_at_night` on; `T_food` 200 / `p_food` 0.3; `T_res` 3000; predators 3/2/2 on a 60–150 ring; `queen_brain` `PROGRAM` with `baseline.lua` (`BUILTIN` before v0.5 exists, and as the fallback); `N_revision` 1120; LLM min interval 60 s; provider Gemini 3.1 Pro (`MOCK` in tests); `build_time` 10; `demolish_time` 5; `pave_speed` 2; `pave_traffic` 30/day; `autosave_ticks` 1120.
 
 ## Tech stack
 
@@ -467,6 +473,8 @@ Decisions still open, each with the current recommendation. When one is settled,
 ---
 
 ## History of changes
+
+**v1.8 (27.09.2026)** — made the queen's own direct control an explicit mode: `BUILTIN` (no program at all — default policy plus the hardcoded plans, the queen assigning every myrmek herself) joins the `queen_brain` table as both the zero point every program is measured against and the silent fallback when there is no key, no loadable file, or no valid version; stated that the tactical level is complete on its own and that a program only tunes its policy (The queen's brain). Also specified the shipped starter strategies in `res://strategies/` — `baseline`, `fortress`, `forager`, `growth` — as the `PROGRAM` content, the arena's opponents and the `MOCK` provider's input.
 
 **v1.7 (27.09.2026)** — two more open questions decided: the save format carries plain types only and is read with `bytes_to_var`, never `bytes_to_var_with_objects`, pinned by a contract test (Saves); LLM keys live in a gitignored `.env` at the project root with a committed `.env.example`, parsed into the environment by a loader in the app/server layer, real environment variables winning, a missing key degrading to `PROGRAM` mode (Security, Tech stack). One open question remains — the async boundary.
 
