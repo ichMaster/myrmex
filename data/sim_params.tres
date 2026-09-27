@@ -1,0 +1,40 @@
+[gd_resource type="Resource" script_class="SimParams" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://data/sim_params.gd" id="1_simparams"]
+
+[resource]
+script = ExtResource("1_simparams")
+world_size = 256
+ticks_per_second = 10
+day_ticks = 600
+dusk_ticks = 60
+night_ticks = 400
+dawn_ticks = 60
+n_plan = 10
+water_pct = 12
+rock_pct = 10
+highland_pct = 8
+patch_count = 40
+patch_cells_min = 3
+patch_cells_max = 12
+patch_reserve_min = 10
+patch_reserve_max = 60
+starting_food_items = 60
+food_item_units_min = 1
+food_item_units_max = 5
+start_clear_radius = 12
+guarantee_radius = 30
+guarantee_min_patches = 2
+guarantee_min_food_units = 20
+t_food = 200
+p_food_permille = 300
+t_res = 3000
+energy_max_milli = 100000
+energy_idle_milli = 10
+energy_step_milli = 50
+energy_step_loaded_milli = 75
+energy_step_paved_milli = 30
+energy_attack_milli = 500
+food_unit_energy_milli = 50000
+queen_idle_milli = 100
+queen_sated_milli = 70000

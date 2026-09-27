@@ -1,0 +1,15 @@
+; Myrmex — deterministic myrmek-nest simulation (Godot 4.x).
+; Engine features and the enabled plugins only; simulation defaults live in
+; res://data/sim_params.tres, never here (ARCHITECTURE §Configuration).
+
+config_version=5
+
+[application]
+
+config/name="Myrmex"
+config/version="0.0.0"
+config/features=PackedStringArray("4.7")
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/gdUnit4/plugin.cfg")

@@ -7,6 +7,7 @@ export_presets.cfg
 
 # codegen tracker & python tooling
 codegen/runs/
+codegen/var/
 __pycache__/
 *.pyc
 .pytest_cache/
@@ -15,3 +16,6 @@ __pycache__/
 .venv/
 .env
 .ship-solution-progress.md
+
+# gdUnit4 run reports
+reports/
