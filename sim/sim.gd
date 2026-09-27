@@ -22,20 +22,33 @@ var spawner: SimSpawner
 ## debugging. Rebuilt every step.
 var last_step_trace := PackedStringArray()
 
+## Autosave wiring (v0: one file, no rotation). The dawn edge writes the
+## tick-boundary state; save_now() serves the runner's shutdown path.
+var autosave_enabled := true
+var autosave_path: String = SimSave.SAVE_PATH
+var saves_written := 0
 
-func _init(seed_value: int, params_in: SimParams) -> void:
+
+func _init(seed_value: int, params_in: SimParams, generate_world := true) -> void:
 	master_seed = seed_value
 	params = params_in
 	rng = SimRng.new(seed_value)
 	clock = SimClock.new(params_in)
 	spawner = SimSpawner.new()
-	world = Worldgen.generate(rng, params_in)
-	if world == null:
-		push_error("Sim: worldgen failed for seed %d" % seed_value)
+	if generate_world:
+		world = Worldgen.generate(rng, params_in)
+		if world == null:
+			push_error("Sim: worldgen failed for seed %d" % seed_value)
 
 
 ## One tick: the seven phases in the invariant order, then the clock moves.
+## The dawn autosave fires before the phases, so the file holds a clean
+## tick-boundary state — a resumed run processes this tick exactly like the
+## uninterrupted one.
 func step() -> void:
+	if autosave_enabled and clock.is_dawn_tick():
+		save_now()
+
 	last_step_trace = PackedStringArray()
 
 	_phase("environment")
@@ -56,6 +69,13 @@ func step() -> void:
 
 func _phase(phase_name: String) -> void:
 	last_step_trace.append(phase_name)
+
+
+## Writes the autosave right now — the dawn edge and the shutdown path both
+## land here.
+func save_now() -> void:
+	if SimSave.write(self, autosave_path):
+		saves_written += 1
 
 
 ## Deterministic hash over the full sim state: world layers, clock position
