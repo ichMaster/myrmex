@@ -1,5 +1,7 @@
 # Roadmap — Myrmex
 
+Document version 1.0 — 27 September 2026.
+
 Seven versions, built in order: **v0** prototype "First Night" (headless core, three roles, the spider, GDScript strategies, the Gemini loop) → **v1** the full nest (big world, six roles, three predators, paving, Lua sandbox, arena, full UI) → **v2** births → **v3** replay → **v4** server and clients → **v5** nests at war → **v6** evolution and the genome. Versions are numbered from 0; phases inside a version are numbered `vA.B`. Each phase lists a **Goal**, a short description, a **Tasks** list, and a **Definition of Done (DoD)**, and ships with the automated tests that encode its DoD (see [ARCHITECTURE.md](ARCHITECTURE.md) §Testing).
 
 **Versioning (`A.B.C`).** Roadmap phase `vA.B` → semver `A.B.0`; a post-release fix on that phase bumps `C`. Never bump a version without explicit confirmation.
@@ -341,3 +343,9 @@ Selection at both levels: bodies and strategies. Depends on: v2 (births), v5 (mu
 ---
 
 **Later (unscheduled):** maximum myrmek age, "last known state" memory instead of live vision on known cells, digging, weather, food spoilage, sound.
+
+---
+
+## History of changes
+
+**v1.0 (27.09.2026)** — initial version, derived from the retired concept v0.20 ([history/](history/)); the concept's v1.1 births / v1.2 replay / v1.3 server / v2 ideas renumbered as v2 / v3 / v4 / v5–v6.

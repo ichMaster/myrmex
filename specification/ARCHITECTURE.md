@@ -1,5 +1,7 @@
 # Architecture — Myrmex
 
+Document version 1.0 — 27 September 2026.
+
 ## Overview
 
 Two layers bound by one rule: the **simulation is pure data** — arrays and dictionaries with no dependency on Godot's scene tree — and everything else (rendering, UI, later the network) only reads it or feeds commands into it at tick boundaries. Capabilities grow by version (three roles → six, one predator → three, GDScript strategies → sandboxed Lua, single app → server and clients), but the sim/presentation split, the determinism rules, and the contracts below are fixed from the first line of code. That is what makes headless tests, the strategy arena, saves-as-serialization, and the v4 server split cheap instead of rewrites.
@@ -203,3 +205,9 @@ Every roadmap phase ships with the tests that encode its DoD; all sim tests run 
 - **Strategy safety**: forbidden identifiers rejected (prototype), sandbox escapes blocked and instruction limit fires (Lua), malformed/out-of-bounds policies rejected, a failed version leaves the previous one running.
 - **Balance smoke**: headless seed batches — without the LLM the nest survives the first night in ≥50% of seeds.
 - **LLM**: `MOCK` provider only in tests — no paid calls; the full report → program → validation → apply loop against canned programs, including deliberately broken ones.
+
+---
+
+## History of changes
+
+**v1.0 (27.09.2026)** — initial version, derived from the retired concept v0.20 ([history/](history/)).

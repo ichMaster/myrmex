@@ -17,6 +17,7 @@ No build, lint, or test commands exist yet. The target stack is Godot 4.x (4.3+)
 ## Conventions
 
 - Terminology is fixed: the creature is a **myrmek** (never "ant" in prose), the base/community is the **nest** (never "colony" or "anthill"). Code identifiers use `nest_id`, `myrmek.gd`, `FEED_MYRMEK`.
+- Each specification file carries a document version in its header ("Document version X.Y — date") and a **History of changes** section at its end. **Every time you change VISION.md, ARCHITECTURE.md, or ROADMAP.md, bump that file's document version and add a dated entry at the top of its history describing what changed and in which sections** (minor bump for content changes, major for restructuring). Document versions are per file and independent of the product/roadmap versions.
 - Build in roadmap order: take the next phase, implement to its DoD, and ship its tests with it. Roadmap phase `vA.B` maps to semver `A.B.0`; never bump a version without explicit confirmation.
 - Defaults are data, not constants: parameter defaults belong in `res://data/*.tres` Resources (the table in ARCHITECTURE.md §Configuration), editable live from the parameters panel.
 - No paid API calls in tests: the LLM is always the `MOCK` provider there.

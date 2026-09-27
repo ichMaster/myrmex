@@ -1,5 +1,7 @@
 # Vision — Myrmex
 
+Document version 1.0 — 27 September 2026.
+
 ## In one sentence
 
 Myrmex is a deterministic cellular-world simulation in Godot where an autonomous nest of ant-like myrmeks — coordinated by a queen whose strategy is a real program, written by a human or an LLM — survives its first night, builds, and expands while you watch and prod the world, but never command a single creature.
@@ -57,3 +59,9 @@ A private research-and-observation project for its author, and later a close cir
 - **Distance field** — weighted BFS over known passable cells; going home is gradient descent, no search.
 - **Tick / day cycle** — the discrete simulation step (10/s base); a day is day–dusk–night–dawn (600/60/400/60 ticks), with night favouring predators.
 - **Interventions** — observer actions on the world: place food, create a patch, summon or remove a predator, heal, reveal map.
+
+---
+
+## History of changes
+
+**v1.0 (27.09.2026)** — initial version, derived from the retired concept v0.20 ([history/](history/)).
