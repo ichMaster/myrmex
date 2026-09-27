@@ -104,6 +104,35 @@ func test_dawn_trigger_writes_once_per_day() -> void:
 	assert_int(resumed.clock.tick).is_equal(2180)
 
 
+func test_in_memory_snapshot_is_isolated() -> void:
+	# Regression (code review #1): snapshot() used to alias the live sim's
+	# dictionaries — an in-memory restore shared state with the original.
+	var sim := Sim.new(555, _params())
+	sim.autosave_enabled = false
+	for i in 50:
+		sim.step()
+	var snap := SimSave.snapshot(sim)
+	var fork := SimSave.restore(snap)
+	fork.autosave_enabled = false
+	var fork_hash := fork.state_hash()
+	assert_int(fork_hash).is_equal(sim.state_hash())
+
+	# Mutate the original directly (dict and packed layers) and step it on.
+	sim.world.patches[0]["reserve"] = 0
+	sim.world.patches[0]["depleted_at"] = sim.clock.tick
+	sim.world.terrain[0] = SimWorld.Terrain.WALL
+	for i in 250:
+		sim.step()
+
+	# The fork and the snapshot itself are untouched by any of it.
+	assert_int(fork.state_hash()).is_equal(fork_hash)
+	var second_fork := SimSave.restore(snap)
+	assert_int(second_fork.state_hash()).is_equal(fork_hash)
+	# And forks are independent of each other too.
+	second_fork.world.patches[0]["reserve"] = 1
+	assert_int(fork.world.patches[0]["reserve"]).is_not_equal(1)
+
+
 func test_foreign_format_versions_refused() -> void:
 	for foreign_version in [0, 999]:
 		var file := FileAccess.open_compressed("user://test_refuse.save", FileAccess.WRITE)

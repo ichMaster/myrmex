@@ -19,7 +19,9 @@ const OUTCOME_STARVED := "starved"
 
 ## The full sim state as plain types. Sparse dictionaries are flattened to
 ## cell-sorted pair arrays so a load rebuilds them in one deterministic
-## insertion order and the state hash survives the round trip.
+## insertion order and the state hash survives the round trip. Everything
+## mutable is deep-copied: a snapshot is immutable-by-construction, so an
+## in-memory restore (or a later write) never aliases the live sim.
 static func snapshot(sim: Sim) -> Dictionary:
 	var world := sim.world
 
@@ -27,19 +29,28 @@ static func snapshot(sim: Sim) -> Dictionary:
 	var object_cells := world.objects.keys()
 	object_cells.sort()
 	for cell in object_cells:
-		object_pairs.append([cell, world.objects[cell]])
+		var object_data: Dictionary = world.objects[cell]
+		object_pairs.append([cell, object_data.duplicate(true)])
 
 	var agent_pairs := []
 	var agent_cells := world.agents.keys()
 	agent_cells.sort()
 	for cell in agent_cells:
-		agent_pairs.append([cell, world.agents[cell]])
+		var agent_value: Variant = world.agents[cell]
+		if typeof(agent_value) == TYPE_DICTIONARY:
+			agent_value = (agent_value as Dictionary).duplicate(true)
+		agent_pairs.append([cell, agent_value])
 
 	var patch_pairs := []
 	var patch_ids := world.patches.keys()
 	patch_ids.sort()
 	for patch_id in patch_ids:
-		patch_pairs.append([patch_id, world.patches[patch_id]])
+		var patch: Dictionary = world.patches[patch_id]
+		patch_pairs.append([patch_id, {
+			"cells": (patch["cells"] as PackedInt32Array).duplicate(),
+			"reserve": patch["reserve"],
+			"depleted_at": patch["depleted_at"],
+		}])
 
 	return {
 		"format_version": FORMAT_VERSION,
@@ -51,9 +62,9 @@ static func snapshot(sim: Sim) -> Dictionary:
 		"world": {
 			"size": world.size,
 			"start_cell": world.start_cell,
-			"terrain": world.terrain,
-			"structures": world.structures,
-			"known": world.known,
+			"terrain": world.terrain.duplicate(),
+			"structures": world.structures.duplicate(),
+			"known": world.known.duplicate(),
 			"objects": object_pairs,
 			"agents": agent_pairs,
 			"patches": patch_pairs,
@@ -155,14 +166,22 @@ static func restore(snapshot_data: Dictionary) -> Sim:
 	var world_data: Dictionary = snapshot_data["world"]
 	var world := SimWorld.new(int(world_data["size"]))
 	world.start_cell = int(world_data["start_cell"])
-	world.terrain = world_data["terrain"]
-	world.structures = world_data["structures"]
-	world.known = world_data["known"]
+	world.terrain = (world_data["terrain"] as PackedByteArray).duplicate()
+	world.structures = (world_data["structures"] as PackedByteArray).duplicate()
+	world.known = (world_data["known"] as PackedByteArray).duplicate()
 	for pair in world_data["objects"]:
-		world.objects[int(pair[0])] = pair[1]
+		world.objects[int(pair[0])] = (pair[1] as Dictionary).duplicate(true)
 	for pair in world_data["agents"]:
-		world.agents[int(pair[0])] = pair[1]
+		var agent_value: Variant = pair[1]
+		if typeof(agent_value) == TYPE_DICTIONARY:
+			agent_value = (agent_value as Dictionary).duplicate(true)
+		world.agents[int(pair[0])] = agent_value
 	for pair in world_data["patches"]:
-		world.patches[int(pair[0])] = pair[1]
+		var patch: Dictionary = pair[1]
+		world.patches[int(pair[0])] = {
+			"cells": PackedInt32Array(patch["cells"]),
+			"reserve": int(patch["reserve"]),
+			"depleted_at": int(patch["depleted_at"]),
+		}
 	sim.world = world
 	return sim
