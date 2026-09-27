@@ -1,6 +1,6 @@
 # Design Brief — Myrmex UI Mockups
 
-Document version 1.0 — 27 September 2026.
+Document version 1.1 — 27 September 2026.
 
 The brief and full specification for mocking up the observer interface and the complete object set in the Claude Design app. Derived from [VISION.md](VISION.md) §The look, [ARCHITECTURE.md](ARCHITECTURE.md) (§Agents, §Nest, §Observability, §What v0 implements) and [ROADMAP.md](ROADMAP.md) (v0.2, v0.6, v1.6) — those three remain the source of truth; if this brief disagrees with them, they win.
 
@@ -83,7 +83,7 @@ Spider `#5A4A66` (v0) · Beetle `#4A5240` (v1) · Lizard `#A3B052` (v1). On the 
 |---|---|---|
 | Day | 600 | none |
 | Dusk | 60 | `#7A5A8C` @ 30% |
-| Night | 400 | `#1A2340` @ 55% + gap light `#FFD9A0` (radial, one per gap) |
+| Night | 400 | `#1A2340` @ 55% + gap light `#FFD9A0` (radial, one per gap — v1; the prototype has the tint only) |
 | Dawn | 60 | `#D9924A` @ 22% |
 
 ### UI chrome
@@ -117,7 +117,7 @@ Master cell = 128 px. "Size" is in cells.
 | 17 | Lizard | v1 | ~2.0 long | tint | run / flee | fast, elongated |
 | 18 | Selection ring | v0 | 1.2 | UI accent | myrmek / cell variants | inspector target |
 | 19 | Path line + target marker | v0 | — | UI accent | — | drawn for the inspected myrmek |
-| 20 | Gap light | v0 | ~2 radial | `#FFD9A0` | night only | warm glow at each open gap |
+| 20 | Gap light | v1 | ~2 radial | `#FFD9A0` | night only | warm glow at each open gap (`PointLight2D`, v1.6 — not in the prototype) |
 
 ## 6. Observer screen anatomy (design at 1440×900)
 
@@ -150,7 +150,7 @@ World view fills the frame; HUD is edge-anchored, dark chrome:
 
 Deliverables (as canvas artboards):
 
-1. Sprite sheet v0 — items 1–15, 18–20 on light and dark ground, at 32 px and 16 px.
+1. Sprite sheet v0 — items 1–15, 18–19 on light and dark ground, at 32 px and 16 px (item 20, the gap light, joins in v1).
 2. Observer screen — day.
 3. Observer screen — first night (hero shot).
 4. Queen panel — `LLM` mode with fired branches.
@@ -163,5 +163,7 @@ Accepted when: pleasant at both v0 zooms (ROADMAP v0.2 DoD); every silhouette un
 ---
 
 ## History of changes
+
+**v1.1 (27.09.2026)** — corrected the gap light to v1 (`PointLight2D` arrives in v1.6; the prototype's night is the tint alone) in the inventory, the overlay table and deliverable 1; added the companion prototype brief ([DESIGN_BRIEF_PROTOTYPE.md](DESIGN_BRIEF_PROTOTYPE.md)).
 
 **v1.0 (27.09.2026)** — initial brief: scope and pillars from VISION §The look, the proposed color language (object tints, role tints, minimap priority palette, day-phase overlays, UI chrome), the 20-sprite inventory with sizes and states, observer-screen and panel anatomy per ARCHITECTURE §Observability and ROADMAP v0.2/v0.6/v1.6, the states set, and the deliverables checklist with acceptance criteria.
