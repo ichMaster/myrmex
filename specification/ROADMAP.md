@@ -1,6 +1,6 @@
 # Roadmap — Myrmex
 
-Document version 1.2 — 27 September 2026.
+Document version 1.3 — 27 September 2026.
 
 Seven versions, built in order: **v0** prototype "First Night" (headless core, three roles, the spider, sandboxed Lua strategies, the Gemini loop) → **v1** the full nest (big world, six roles, three predators, paving, the full StateView, the arena, full UI) → **v2** births → **v3** replay → **v4** server and clients → **v5** nests at war → **v6** evolution and the genome. Versions are numbered from 0; phases inside a version are numbered `vA.B`. Each phase lists a **Goal**, a short description, a **Tasks** list, and a **Definition of Done (DoD)**, and ships with the automated tests that encode its DoD (see [ARCHITECTURE.md](ARCHITECTURE.md) §Testing).
 
@@ -58,7 +58,7 @@ Agents arrive: worker/builder/guard state machines, the queen's tactical task bo
 - Agent records and the shared state machine (`IDLE`/`GO_TO`/`WORK`/`RETURN`/`DEPOSIT` + `HUNGRY`/critical); 8-directional movement, one agent per cell; `MultiMeshInstance2D` rendering with interpolation and role tint.
 - Roles: worker (carries if there is something to carry, mines if a patch is assigned, else explores the frontier), builder (walls, storages, open/close gaps), guard (patrol ring, stand in gaps); the immobile queen.
 - Knowledge mask + incremental frontier; reveal radius 2 (5 for exploring workers); pathfinding: global weighted BFS distance field + local `AStarGrid2D`; unreachable targets never assigned.
-- Task board on `N_plan`: `EXPLORE`, `FETCH_FOOD`, `HARVEST`, `BUILD`, `FEED_MYRMEK`, `PATROL`, `HOLD_GAP`, `OPEN_GAP`, `CLOSE_GAP`; ranking safety → feeding → food → build → explore; greedy assignment by distance; the hardcoded first-day plan.
+- Task board on `N_plan`: `EXPLORE`, `FETCH_FOOD`, `HARVEST`, `BUILD`, `FEED_MYRMEK`, `PATROL`, `HOLD_GAP`, `OPEN_GAP`, `CLOSE_GAP`; ranking safety → feeding → food → build → explore; greedy assignment by distance; the hardcoded first-day plan. This is `queen_brain = BUILTIN`: the queen directs every myrmek on her own algorithm, with no strategy program anywhere in the project yet (Lua arrives in v0.5).
 - Energy and hunger per §Agents (ARCHITECTURE), stored as fixed-point integers; eating from storage; starvation deaths with the cargo-drop rule.
 - Construction: fixed-ring nest plan growing with population, `build_time`/`demolish_time`, resource return, flood-fill interior and capacity, `seal_at_night` (seal at dusk, reopen at dawn); night policy pulling myrmeks inside.
 
@@ -75,7 +75,7 @@ Agents arrive: worker/builder/guard state machines, the queen's tactical task bo
 - Combat: 8-adjacent damage each tick, stacking attackers, gap crossfire; worker one-hit deaths, `FLEE` for workers; carcass → `FOOD` hauled to storage; cargo drop on death.
 - Balance pass: food spawn vs deaths vs guard coverage; death counters by cause.
 
-**DoD:** without any LLM the nest survives the first night in **≥50% of seeds** (headless batch); guards visibly intercept and hold gaps; a killed spider feeds the nest.
+**DoD:** on `BUILTIN` alone — no program, no model — the nest survives the first night in **≥50% of seeds** (headless batch); guards visibly intercept and hold gaps; a killed spider feeds the nest. This is the zero point every later strategy is measured against.
 
 **Tests:** combat resolution and stacking; carcass and cargo-drop rules; night multipliers; the ≥50% survival smoke over a seed batch.
 
@@ -90,13 +90,17 @@ The strategic level over the task board: Lua 5.4 strategies via godot-luaAPI beh
 - `StrategyRunner` with the Lua 5.4 runner: only `base`/`table`/`string`/`math` bound (no `os`/`io`/`require`/`load`, nothing from the engine), an instruction-counter hook that interrupts a looping `plan()`, protected calls, table conversion both ways; `memory` persists between calls (plain data only — it is saved with the state).
 - Tiny `StateView` (~10 scalars: phase, population, deaths since dawn, food store, nearest food, predators within radius, ring closed, capacity vs population, gap status) + 6 policy fields (food-vs-build weight, guards-at-gaps share, seal at night, ring radius, workers-on-resource share, build priority); schema and bounds validation.
 - Safety: the sandbox + instruction limit, policy bounds, and a dry run on recorded states; a failed or interrupted version is discarded, the previous keeps running.
-- `PROGRAM` mode with strategy files; the version journal `{source, author_mode, tick, change_note}`; autosave before applying a new version.
+- `PROGRAM` mode with strategy files, and **the shipped starter set** in `res://strategies/` — several hand-written Lua programs, each a few dozen lines expressing a different idea within the six policy fields: `baseline.lua` (the `PROGRAM` default), `fortress.lua` (guards at the gaps, always seal, tight ring), `forager.lua` (food-weighted, fewer guards), `growth.lua` (wider ring early). They are also the `MOCK` provider's input and the arena's first opponents.
+- **Declared goals + the dawn scorecard** (`strategy_eval.gd`): each program exports a bounds-checked `goals` table; at every dawn actuals are scored against it into a journaled `Scorecard` (healthy / warning / failing), with the engine's floors — population halving, a starved queen, a day with an empty store — checked immediately and impossible to declare away. `probation_days` grace for a fresh version.
+- **The escalation ladder, minimal form:** a `failing` verdict demotes to `BUILTIN` at once, blacklists that version, and promotes the next eligible starter strategy (untried this crisis, not a fingerprint sibling of the failure) within a budget of `library_attempts`; once spent, the LLM is asked with the **failure dossier** (every failed source, its scorecards, the floors breached, and `BUILTIN`'s numbers over the same days) and a returned rehash is rejected by fingerprint. `BUILTIN` plays throughout; the attempt ledger is journaled, so a save/load and a replay make the same choices.
+- `BUILTIN` stays selectable and is the fallback: no key, an unloadable file, or every candidate version rejected → the nest plays on its own algorithm and the queen panel says so.
+- The version journal `{source, author_mode, tick, change_note}`; autosave before applying a new version.
 - `LLM` mode: report assembly (state + metrics + fired branches), async `HTTPRequest`, minimum real-time interval; providers Gemini 3.1 Pro and `MOCK` (program from file); revision triggers — first night, "more than three deaths since dawn", `request_revision`.
 - Queen panel: current program with fired-branch highlighting, last policy and explanation, version history.
 
-**DoD:** the concept's loop criterion — a program from Gemini arrives in under ten seconds and **visibly changes behaviour** (after losses, more guards at gaps; short on space, an earlier wider ring); a deliberately broken version is rejected and a deliberately looping `plan()` is interrupted without stalling a tick — the nest keeps its previous strategy either way; a saved run replays with the journaled programs, no new model calls.
+**DoD:** the concept's loop criterion — a program from Gemini arrives in under ten seconds and **visibly changes behaviour** (after losses, more guards at gaps; short on space, an earlier wider ring), and the four shipped strategies visibly differ from each other and from `BUILTIN` on the same seed; a deliberately broken version is rejected and a deliberately looping `plan()` is interrupted without stalling a tick — the nest keeps its previous strategy either way; a saved run replays with the journaled programs, no new model calls.
 
-**Tests:** runner contract; sandbox escape attempts (`os`, `io`, `require`, `load`, `_G` tricks) blocked; the instruction limit fires; dry-run failure → previous version stays; policy bounds; `MOCK` end-to-end (report → program → apply); journal replay determinism. No paid calls in tests.
+**Tests:** runner contract; sandbox escape attempts (`os`, `io`, `require`, `load`, `_G` tricks) blocked; the instruction limit fires; dry-run failure → previous version stays; policy and `goals` bounds, including a declaration laxer than a floor being clamped; scorecard verdicts from fixture days; a deliberately bad strategy demoted to `BUILTIN` within a day with the nest surviving; siblings skipped without consuming budget and a rehashed answer rejected by fingerprint; the attempt ledger surviving save/load; `MOCK` end-to-end (dossier → program → apply); journal replay determinism. No paid calls in tests.
 
 ### v0.6 — Inspector, interventions, event log
 
@@ -173,8 +177,10 @@ Scale the prototype to the full simulation: the big chunked world with an active
 
 **Tasks:**
 - The full `StateView` (ARCHITECTURE §Contracts) and the full policy schema; the LLM's API description extended to match.
+- **The full escalation ladder** over the library: candidates ranked by arena results rather than file order, fingerprints computed for every stored program, and blacklisting with earned rehabilitation after `blacklist_days` sim-days (a rehabilitated version re-enters on probation; a second failure blacklists it for the run).
+- The **scorecard becomes the arena's scoring function**, so the live game, the arena and the model all rank strategies by the same numbers.
 - Strategy library (`user://strategies/`): names, versions, revision history; load as `PROGRAM`; save-to-library from the queen panel.
-- The arena (`res://tools/run_arena.gd`): the *strategies × seeds* matrix run **sequentially in one headless process**, each cell a fresh world from its own seed; one results table per run under `user://arena/<run_id>/` (per cell: survival, days, deaths by cause, food, capacity growth, ticks) plus a summary ranking.
+- The arena (`res://tools/run_arena.gd`): the *strategies × seeds* matrix — with `BUILTIN` as the zero-point entry — run **sequentially in one headless process**, each cell a fresh world from its own seed; one results table per run under `user://arena/<run_id>/` (per cell: survival, days, deaths by cause, food, capacity growth, ticks) plus a summary ranking.
 - Providers: OpenAI-compatible, Anthropic, Ollama alongside Gemini and `MOCK`; keys in local config outside the repo.
 
 **DoD:** the full `StateView` and policy surface are pinned by contract tests; the arena ranks a set of strategies on identical seeds, and re-running the same strategy list and seed list reproduces the table exactly.
@@ -347,6 +353,8 @@ Selection at both levels: bodies and strategies. Depends on: v2 (births), v5 (mu
 ---
 
 ## History of changes
+
+**v1.3 (27.09.2026)** — the program-free mode and strategy judging spelled out across the phases: v0.3's task board named as `queen_brain = BUILTIN`, v0.4's DoD restated as the `BUILTIN` zero point, v0.5 gaining the shipped starter strategies, declared `goals` with the dawn scorecard and the minimal escalation ladder (budget, sibling skipping, failure dossier, rejected rehashes) plus tests for all of it, and v1.5 gaining the full ladder over a ranked library with rehabilitation and the scorecard as the arena's scoring function.
 
 **v1.2 (27.09.2026)** — v1.5's arena task specified per the decided execution model: a sequential single-process matrix in `res://tools/run_arena.gd`, one results table per run under `user://arena/<run_id>/`, with table reproducibility in the DoD and tests.
 
