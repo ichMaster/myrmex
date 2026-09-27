@@ -1,0 +1,12 @@
+Myrmex — release notes
+
+Version 0.1.0 (2026-09-27)
+---------------------------
+- Phase v0.1 "Headless simulation and world generator" (roadmap v0 — Prototype "First Night").
+- Pure-data sim core in res://sim: named RNG streams from one master seed, the 600/60/400/60 day-cycle clock, the layered world model (terrain/structure bytes, one object and one agent per cell, per-nest knowledge).
+- Seeded world generator: noise water and rock at documented shares, highland massifs as ellipse blobs with noise edges, cellular smoothing, largest-region start cleared to radius 12, the brood dome north of the start, 40 resource patches (two guaranteed near the start), 60 starting food items, sub-seed regeneration when a guarantee fails.
+- The invariant seven-phase tick loop (agent phases as explicit no-ops) with live environment dynamics: p_food food waves every T_food ticks, patch regeneration after T_res.
+- Object-free serialization: plain-types snapshot via var_to_bytes into a compressed single-file autosave with a JSON sidecar header; dawn and shutdown saves; exact bit-identical resume; foreign format versions refused.
+- Headless entry point and determinism harness: seeded runs print evolving stats; two runs from one seed are byte-identical; kill-and-relaunch continues on the same state hash.
+- Test gate: gdUnit4 v6.2.1 vendored, scripts/test.sh headless suite (43 tests: 4 pinned contracts + units), CI green on every push.
+- Code review: 3 fix-now findings fixed (snapshot isolation, persistent dawn-save metadata, fresh-clone runner import); 3 low findings deferred to their phases.
